@@ -31,6 +31,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: requires a running PostgreSQL instance (Docker Compose)",
+]
+addopts = ["--strict-markers", "-m", "not integration"]
 
 [tool.ruff]
 line-length = 88

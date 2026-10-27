@@ -31,5 +31,24 @@ uv run ai-knowledge-hub-api
 ```powershell
 uv run ruff check .
 uv run ruff format --check .
+```
+
+### Tests
+
+Default (unit only, no PostgreSQL required):
+
+```powershell
 uv run pytest
 ```
+
+Last verified: **9 passed**, 1 deselected (`integration`).
+
+PostgreSQL integration (requires `docker compose up -d` from repo root):
+
+```powershell
+uv run pytest -m integration
+```
+
+Last verified: **1 passed**, 9 deselected (Docker Postgres on `127.0.0.1:5433`).
+
+If Postgres is unreachable, the integration test **fails** (no skip).

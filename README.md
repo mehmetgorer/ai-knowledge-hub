@@ -63,7 +63,8 @@ uv run ai-knowledge-hub-api
 | `uv run ai-knowledge-hub-api` | Start Uvicorn |
 | `uv run ruff check .` | Lint |
 | `uv run ruff format --check .` | Format check |
-| `uv run pytest` | API tests |
+| `uv run pytest` | API unit tests (excludes `integration`) |
+| `uv run pytest -m integration` | PostgreSQL integration test (Docker required) |
 
 API base URL (default): [http://localhost:8000](http://localhost:8000)
 

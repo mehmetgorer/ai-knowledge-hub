@@ -28,7 +28,12 @@
 - `ai_knowledge_hub_api.database` — engine singleton, `ping_database()` (`SELECT 1`), `dispose_engine()` on app shutdown.
 - Settings load repo root `.env` then `services/api/.env`; reuse `POSTGRES_*` or optional `DATABASE_URL`; `SecretStr` for passwords; `DATABASE_CONNECT_TIMEOUT` (default 5s).
 - `GET /health/ready` — `200` when DB reachable, `503` with safe JSON when not; `/health/live` unchanged.
-- Tests: mocked ready success/failure; config URL building; integration test against local Docker Postgres.
+- Tests: mocked ready success/failure; config URL building; optional `integration` marker test against Docker Postgres.
+
+## Phase 1D.1a — Test isolation (complete)
+
+- pytest `integration` marker registered; default `uv run pytest` uses `--strict-markers` and `-m "not integration"`.
+- Explicit integration run: `uv run pytest -m integration` (fails if Postgres is down).
 
 **Not in scope:** Alembic, ORM models, app tables, auth, RAG.
 
@@ -42,7 +47,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest
+uv run pytest              # unit: 9 passed, 1 deselected
+uv run pytest -m integration # integration: 1 passed (with Docker Postgres)
 uv run ai-knowledge-hub-api
 # GET http://localhost:8000/health/live
 # GET http://localhost:8000/health/ready
