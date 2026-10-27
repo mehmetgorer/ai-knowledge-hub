@@ -37,11 +37,16 @@ def get_jwks_resolver(settings: Settings = Depends(get_settings)) -> JwksKeyReso
             detail="Authentication is not configured",
         ) from None
 
+    assert settings.auth_jwks_url is not None
     return _jwks_resolver_for_url(
         settings.auth_jwks_url,
         settings.auth_jwks_cache_ttl_seconds,
         settings.auth_jwks_request_timeout_seconds,
     )
+
+
+def clear_jwks_resolver_cache() -> None:
+    _jwks_resolver_for_url.cache_clear()
 
 
 def get_current_subject(

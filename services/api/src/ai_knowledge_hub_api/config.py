@@ -1,11 +1,12 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, computed_field
+from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
 from ai_knowledge_hub_api.auth.errors import AuthenticationConfigurationError
+from ai_knowledge_hub_api.auth.jwks import validate_auth_jwks_url
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _API_ROOT = _PACKAGE_DIR.parent.parent
@@ -81,6 +82,13 @@ class Settings(BaseSettings):
         default=10.0,
         validation_alias="AUTH_JWKS_REQUEST_TIMEOUT_SECONDS",
     )
+
+    @field_validator("auth_jwks_url")
+    @classmethod
+    def _validate_auth_jwks_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_auth_jwks_url(value)
 
     def require_auth_configuration(self) -> None:
         if not self.auth_jwks_url or not self.auth_issuer:

@@ -39,7 +39,7 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 30 passed, 3 deselected
+uv run pytest                    # unit: 36 passed, 3 deselected
 uv run pytest -m integration     # integration: 3 passed, 17 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
@@ -55,6 +55,12 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
+
+## Phase 2B.1a — JWKS security fix (complete)
+
+- `PyJWKClient` uses `cache_keys=False`; bounded JWK-set cache via `lifespan` / timeout.
+- Unknown `kid` → `401`; JWKS network errors → `503` (no token or exception details in responses).
+- `AUTH_JWKS_URL` must be HTTPS except localhost; Neon integration: set `AUTH_JWKS_URL` from API `jwks_url`, `AUTH_ISSUER` from `base_url` origin (EdDSA tokens). See [Neon JWT guide](https://neon.com/docs/auth/guides/plugins/jwt).
 
 ## Phase 2B.1 — JWT auth verification (complete)
 
