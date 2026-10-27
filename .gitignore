@@ -36,6 +36,11 @@ coverage/
 .vercel
 .turbo
 
+# Docker / local database (bind-mount data only; named volumes live in Docker)
+infra/postgres/data/
+docker/postgres/data/
+*.sql.dump
+
 # Python
 .venv/
 venv/

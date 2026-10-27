@@ -21,7 +21,27 @@
 - `services/api/.env.example` (no secrets); local `.env` gitignored.
 - Tests: health endpoint and settings/CORS parsing.
 - `uv.lock` committed for reproducible installs.
-- Root `.gitignore` extended for Python virtualenvs and caches.
+
+## Phase 1C — Local database infrastructure (complete)
+
+- Root `docker-compose.yml` — PostgreSQL 17 + pgvector (`pgvector/pgvector:0.8.7-pg17`).
+- Named volume `ai-knowledge-hub-postgres-data`, health check, `restart: unless-stopped`, `stop_grace_period: 30s`.
+- Port `127.0.0.1:${POSTGRES_PORT:-5433}` → container `5432`.
+- Root `.env.example` with development-only placeholder DB credentials; `.env` gitignored.
+- `scripts/postgres-smoke-test.sql` — connectivity, version, pgvector availability, `CREATE EXTENSION vector`.
+- **Not in scope:** SQLAlchemy, Alembic, models, FastAPI DB connection.
+
+### Database verification (from repo root)
+
+```powershell
+Copy-Item .env.example .env
+docker compose config
+docker compose up -d
+docker compose ps
+Get-Content scripts\postgres-smoke-test.sql | docker compose exec -T postgres psql -U ai_knowledge_hub -d ai_knowledge_hub
+```
+
+Use `docker compose down` or `docker compose stop` to shut down; do **not** use `docker compose down -v` unless you intend to delete the named volume.
 
 ### API verification (from `services/api`)
 
@@ -42,18 +62,17 @@ npm run build
 
 ## Explicitly not in scope yet
 
-- PostgreSQL, Docker, SQLAlchemy, Alembic.
+- SQLAlchemy, Alembic, ORM models, API database wiring.
 - Authentication, embeddings, RAG, document uploads, external AI APIs.
 - CI workflows (recommended next).
 
-## Recommended next steps (Phase 1C+)
+## Recommended next steps (Phase 1D+)
 
-1. Add GitHub Actions: npm lint/typecheck/build + uv ruff/pytest.
-2. Shared API contract or OpenAPI export for frontend integration.
-3. Database layer and migrations when persistence is required.
-4. Optional: root `docker-compose` only after Docker phase is approved.
+1. SQLAlchemy + Alembic in `services/api` with settings-driven `DATABASE_URL`.
+2. GitHub Actions: Docker-less API/frontend checks + optional compose integration job.
+3. Migrations and first persistence models when product schema is defined.
 
 ## Notes
 
 - `apps/web/AGENTS.md` is Next.js scaffold guidance; optional to keep.
-- Frontend was not changed in Phase 1B except documentation at repo root.
+- API and frontend application code unchanged in Phase 1C (docs and infra only).
