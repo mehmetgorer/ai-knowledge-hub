@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from ai_knowledge_hub_api.config import Settings, get_settings
+from ai_knowledge_hub_api.migrations import ALEMBIC_HEAD_REVISION
 from tests.alembic_test_support import (
     assert_local_postgres_host,
     assert_safe_temporary_database_name,
@@ -42,14 +43,14 @@ def test_alembic_upgrade_downgrade_on_temporary_database() -> None:
 
         upgrade = run_alembic("upgrade", "head", database_url=temp_url)
         assert upgrade.returncode == 0, upgrade.stderr
-        assert read_alembic_revision(temp_url) == "0001_enable_vector"
+        assert read_alembic_revision(temp_url) == ALEMBIC_HEAD_REVISION
 
         upgrade_again = run_alembic("upgrade", "head", database_url=temp_url)
         assert upgrade_again.returncode == 0, upgrade_again.stderr
 
         current = run_alembic("current", database_url=temp_url)
         assert current.returncode == 0, current.stderr
-        assert "0001_enable_vector" in current.stdout
+        assert ALEMBIC_HEAD_REVISION in current.stdout
 
         downgrade = run_alembic("downgrade", "base", database_url=temp_url)
         assert downgrade.returncode == 0, downgrade.stderr
@@ -57,7 +58,7 @@ def test_alembic_upgrade_downgrade_on_temporary_database() -> None:
 
         upgrade_after_downgrade = run_alembic("upgrade", "head", database_url=temp_url)
         assert upgrade_after_downgrade.returncode == 0, upgrade_after_downgrade.stderr
-        assert read_alembic_revision(temp_url) == "0001_enable_vector"
+        assert read_alembic_revision(temp_url) == ALEMBIC_HEAD_REVISION
 
         with create_engine(temp_url).connect() as connection:
             row = connection.execute(

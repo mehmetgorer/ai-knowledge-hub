@@ -26,7 +26,12 @@ uv run alembic history
 uv run alembic downgrade base
 ```
 
-Initial revision `0001_enable_vector` runs `CREATE EXTENSION IF NOT EXISTS vector`. Downgrade does **not** drop the extension (see migration docstring).
+| Revision | Purpose |
+| -------- | ------- |
+| `0001_enable_vector` | `CREATE EXTENSION IF NOT EXISTS vector` (downgrade does not drop extension) |
+| `0002_collections_documents` | `collections` and `documents` tables |
+
+ORM models live in `src/ai_knowledge_hub_api/models/`. `Collection.owner_subject` must come from a **verified** identity provider in production, not from unauthenticated client input (see model docstring).
 
 ## Run
 
@@ -54,7 +59,7 @@ Default (unit only, no PostgreSQL required):
 uv run pytest
 ```
 
-Last verified: **9 passed**, 2 deselected (`integration`).
+Last verified: **17 passed**, 3 deselected (`integration`).
 
 PostgreSQL integration (requires `docker compose up -d` from repo root):
 
@@ -62,6 +67,6 @@ PostgreSQL integration (requires `docker compose up -d` from repo root):
 uv run pytest -m integration
 ```
 
-Last verified: **2 passed**, 9 deselected (connectivity + Alembic on a temporary database).
+Last verified: **3 passed**, 17 deselected (connectivity, Alembic, schema constraints on temporary databases).
 
 If Postgres is unreachable, the integration test **fails** (no skip).

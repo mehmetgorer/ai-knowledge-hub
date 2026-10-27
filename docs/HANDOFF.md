@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 14 passed, 2 deselected
-uv run pytest -m integration     # integration: 2 passed, 14 deselected
+uv run pytest                    # unit: 17 passed, 3 deselected
+uv run pytest -m integration     # integration: 3 passed, 17 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -56,6 +56,15 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
 
+## Phase 2A — Core data model (complete)
+
+- SQLAlchemy models: **Collection** (`owner_subject`, `name`, UUID/timestamptz) and **Document** (FK to collection, file metadata, `document_status` enum, optional SHA-256 hex, `storage_key` unique).
+- `owner_subject` is for verified IdP subjects only (documented on the model; no auth implementation yet).
+- Alembic **`0002_collections_documents`** after `0001_enable_vector`; `env.py` uses `Base.metadata`.
+- Unit model tests; integration tests for migrations and FK/cascade on temporary DBs only.
+
+Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections_documents`).
+
 ## Phase 1E — GitHub Actions CI (complete)
 
 - Workflow `.github/workflows/ci.yml` on `push` / `pull_request` to `main`.
@@ -65,13 +74,12 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 
 ## Explicitly not in scope yet
 
-- SQLAlchemy ORM models and application tables.
-- Authentication, embeddings, RAG, document uploads, external AI APIs.
+- Authentication, API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
 
 ## Recommended next steps
 
-1. First application schema migration(s) when models are defined.
+1. Verified auth integration and collection/document API endpoints.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 

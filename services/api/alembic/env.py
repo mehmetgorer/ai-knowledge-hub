@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy import create_engine, pool
 
 from ai_knowledge_hub_api.config import get_settings
+from ai_knowledge_hub_api.models import Base
 from alembic import context
 
 config = context.config
@@ -10,7 +11,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def _database_url() -> str:
