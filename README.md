@@ -4,6 +4,13 @@ Independent, professional AI-powered document intelligence platform.
 
 Repository: [github.com/mehmetgorer/ai-knowledge-hub](https://github.com/mehmetgorer/ai-knowledge-hub)
 
+## Continuous integration
+
+GitHub Actions workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes and pull requests to `main`:
+
+- **Frontend** — `npm ci`, lint, typecheck, build (Node.js 24)
+- **Backend** — `uv sync --frozen`, lock check, Ruff, unit pytest (no Docker or database)
+
 ## Stack
 
 | Area | Location | Stack |

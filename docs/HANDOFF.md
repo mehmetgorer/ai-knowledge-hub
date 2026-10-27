@@ -56,16 +56,22 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
 
+## Phase 1E — GitHub Actions CI (complete)
+
+- Workflow `.github/workflows/ci.yml` on `push` / `pull_request` to `main`.
+- Jobs: **Frontend** (Node 24, `npm ci`, lint, typecheck, build) and **Backend** (`services/api`, `uv sync --frozen`, lock check, Ruff, unit pytest).
+- `permissions: contents: read`; no secrets, Docker, or integration tests in CI.
+
 ## Explicitly not in scope yet
 
 - SQLAlchemy ORM models and application tables.
 - Authentication, embeddings, RAG, document uploads, external AI APIs.
-- CI workflows.
+- CI jobs for Docker / PostgreSQL integration tests.
 
 ## Recommended next steps
 
 1. First application schema migration(s) when models are defined.
-2. GitHub Actions: unit pytest + optional compose integration job.
+2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 
 ## Notes
