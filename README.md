@@ -9,7 +9,7 @@ Repository: [github.com/mehmetgorer/ai-knowledge-hub](https://github.com/mehmetg
 | Area | Location | Stack |
 | ---- | -------- | ----- |
 | Frontend | `apps/web` | Next.js (App Router), TypeScript, Tailwind CSS, ESLint |
-| API | `services/api` | Python 3.12, FastAPI, Pydantic Settings, Uvicorn, uv |
+| API | `services/api` | Python 3.12, FastAPI, SQLAlchemy 2, psycopg 3, uv |
 | Database (local) | Docker Compose | PostgreSQL 17 + pgvector |
 
 Python and npm dependencies are managed independently.
@@ -50,9 +50,10 @@ Dev URL: [http://localhost:3000](http://localhost:3000)
 ## API (`services/api`)
 
 ```powershell
+# From repo root: ensure root .env exists for POSTGRES_* (see .env.example)
 cd services\api
 uv sync
-Copy-Item .env.example .env
+Copy-Item .env.example .env   # optional API-only settings
 uv run ai-knowledge-hub-api
 ```
 
@@ -64,14 +65,20 @@ uv run ai-knowledge-hub-api
 | `uv run ruff format --check .` | Format check |
 | `uv run pytest` | API tests |
 
-API base URL (default): [http://localhost:8000](http://localhost:8000)  
-Health: `GET /health/live`
+API base URL (default): [http://localhost:8000](http://localhost:8000)
+
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /health/live` | Liveness (no database) |
+| `GET /health/ready` | Database connectivity (`SELECT 1`); `503` if Postgres is down |
+
+Database URL is built from root `POSTGRES_*` variables or optional `DATABASE_URL`. Settings load `../../.env` then `services/api/.env` when you run commands from `services/api`.
 
 CORS allows origins from `CORS_ORIGINS` (comma-separated). Default: `http://localhost:3000`.
 
 ## Local PostgreSQL (Docker)
 
-PostgreSQL 17 with **pgvector** for local development. The API does not connect to the database yet (Phase 1C infrastructure only).
+PostgreSQL 17 with **pgvector** for local development. The API connects for `/health/ready` only (no migrations or app tables yet).
 
 From the repository root:
 

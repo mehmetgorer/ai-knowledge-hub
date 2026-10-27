@@ -9,52 +9,45 @@
 
 - npm workspaces with `apps/web` (Next.js 16, TypeScript, Tailwind CSS v4, ESLint).
 - Minimal home page and root npm scripts: `dev`, `build`, `lint`, `typecheck`.
-- Published to GitHub (initial commit on `main`).
 
 ## Phase 1B — FastAPI foundation (complete)
 
-- Independent Python project at `services/api` (Python 3.12+, managed with **uv**).
-- **FastAPI** app with **Pydantic Settings**, **Uvicorn**, **Ruff**, **pytest**, **httpx**.
-- Package layout: `src/ai_knowledge_hub_api/` (`app`, `config`, `routers`, `schemas`, `main`).
-- `GET /health/live` — JSON `{ "service": "<SERVICE_NAME>", "status": "healthy" }`.
-- **CORS** middleware with explicit allowlist from `CORS_ORIGINS` (default `http://localhost:3000`).
-- `services/api/.env.example` (no secrets); local `.env` gitignored.
-- Tests: health endpoint and settings/CORS parsing.
-- `uv.lock` committed for reproducible installs.
+- Independent Python project at `services/api` (Python 3.12+, **uv**).
+- FastAPI, Pydantic Settings, Uvicorn, Ruff, pytest, httpx.
+- `GET /health/live` — liveness without database.
 
 ## Phase 1C — Local database infrastructure (complete)
 
 - Root `docker-compose.yml` — PostgreSQL 17 + pgvector (`pgvector/pgvector:0.8.7-pg17`).
-- Named volume `ai-knowledge-hub-postgres-data`, health check, `restart: unless-stopped`, `stop_grace_period: 30s`.
-- Port `127.0.0.1:${POSTGRES_PORT:-5433}` → container `5432`.
-- Root `.env.example` with development-only placeholder DB credentials; `.env` gitignored.
-- `scripts/postgres-smoke-test.sql` — connectivity, version, pgvector availability, `CREATE EXTENSION vector`.
-- **Not in scope:** SQLAlchemy, Alembic, models, FastAPI DB connection.
+- Named volume `ai-knowledge-hub-postgres-data`, port `127.0.0.1:5433` by default.
+- Root `.env.example` for `POSTGRES_*`; `scripts/postgres-smoke-test.sql`.
 
-### Database verification (from repo root)
+## Phase 1D.1 — Database connection (complete)
+
+- **SQLAlchemy 2.x** + **psycopg 3** in `services/api`.
+- `ai_knowledge_hub_api.database` — engine singleton, `ping_database()` (`SELECT 1`), `dispose_engine()` on app shutdown.
+- Settings load repo root `.env` then `services/api/.env`; reuse `POSTGRES_*` or optional `DATABASE_URL`; `SecretStr` for passwords; `DATABASE_CONNECT_TIMEOUT` (default 5s).
+- `GET /health/ready` — `200` when DB reachable, `503` with safe JSON when not; `/health/live` unchanged.
+- Tests: mocked ready success/failure; config URL building; integration test against local Docker Postgres.
+
+**Not in scope:** Alembic, ORM models, app tables, auth, RAG.
+
+### Verification
 
 ```powershell
-Copy-Item .env.example .env
-docker compose config
+# Postgres (repo root)
 docker compose up -d
-docker compose ps
-Get-Content scripts\postgres-smoke-test.sql | docker compose exec -T postgres psql -U ai_knowledge_hub -d ai_knowledge_hub
-```
 
-Use `docker compose down` or `docker compose stop` to shut down; do **not** use `docker compose down -v` unless you intend to delete the named volume.
-
-### API verification (from `services/api`)
-
-```powershell
-uv sync
+# API (services/api)
+uv lock --check
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
-```
+uv run ai-knowledge-hub-api
+# GET http://localhost:8000/health/live
+# GET http://localhost:8000/health/ready
 
-### Frontend verification (from repo root)
-
-```powershell
+# Frontend (repo root)
 npm run lint
 npm run typecheck
 npm run build
@@ -62,17 +55,17 @@ npm run build
 
 ## Explicitly not in scope yet
 
-- SQLAlchemy, Alembic, ORM models, API database wiring.
+- Alembic migrations and SQLAlchemy models.
 - Authentication, embeddings, RAG, document uploads, external AI APIs.
-- CI workflows (recommended next).
+- CI workflows.
 
-## Recommended next steps (Phase 1D+)
+## Recommended next steps (Phase 1D.2+)
 
-1. SQLAlchemy + Alembic in `services/api` with settings-driven `DATABASE_URL`.
-2. GitHub Actions: Docker-less API/frontend checks + optional compose integration job.
-3. Migrations and first persistence models when product schema is defined.
+1. Alembic bootstrap and first migration workflow.
+2. GitHub Actions with pytest (unit) and optional compose job for integration.
+3. Shared `DATABASE_URL` documentation for managed Postgres.
 
 ## Notes
 
-- `apps/web/AGENTS.md` is Next.js scaffold guidance; optional to keep.
-- API and frontend application code unchanged in Phase 1C (docs and infra only).
+- Frontend unchanged in Phase 1D.1.
+- Never log or return database credentials from the API.

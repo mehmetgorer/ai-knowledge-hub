@@ -1,6 +1,6 @@
 # AI Knowledge Hub API
 
-FastAPI backend for AI Knowledge Hub (Phase 1B foundation).
+FastAPI backend for AI Knowledge Hub.
 
 ## Setup
 
@@ -11,7 +11,9 @@ cd services/api
 uv sync
 ```
 
-Copy `.env.example` to `.env` and adjust values as needed.
+Copy `.env.example` to `.env` for API-specific settings. Database credentials are read from the **repository root** `.env` (`POSTGRES_*`) when present; optional `DATABASE_URL` overrides the built URL.
+
+Start local PostgreSQL from the repo root (`docker compose up -d`) before readiness checks.
 
 ## Run
 
@@ -19,7 +21,10 @@ Copy `.env.example` to `.env` and adjust values as needed.
 uv run ai-knowledge-hub-api
 ```
 
-Health check: `GET http://localhost:8000/health/live`
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /health/live` | Process liveness (no database) |
+| `GET /health/ready` | `SELECT 1` against PostgreSQL; `503` if unreachable |
 
 ## Quality checks
 

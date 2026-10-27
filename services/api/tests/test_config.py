@@ -1,13 +1,6 @@
 import pytest
 
-from ai_knowledge_hub_api.config import Settings, get_settings
-
-
-@pytest.fixture(autouse=True)
-def clear_settings_cache() -> None:
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+from ai_knowledge_hub_api.config import Settings
 
 
 def test_default_cors_origins_include_local_frontend() -> None:
