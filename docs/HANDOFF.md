@@ -61,6 +61,7 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Workflow `.github/workflows/ci.yml` on `push` / `pull_request` to `main`.
 - Jobs: **Frontend** (Node 24, `npm ci`, lint, typecheck, build) and **Backend** (`services/api`, `uv sync --frozen`, lock check, Ruff, unit pytest).
 - `permissions: contents: read`; no secrets, Docker, or integration tests in CI.
+- Frontend `typecheck` runs `next typegen` before `tsc` so route types exist on clean checkouts (CI).
 
 ## Explicitly not in scope yet
 
