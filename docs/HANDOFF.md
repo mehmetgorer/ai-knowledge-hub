@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 9 passed, 2 deselected
-uv run pytest -m integration     # integration: 2 passed, 9 deselected
+uv run pytest                    # unit: 14 passed, 2 deselected
+uv run pytest -m integration     # integration: 2 passed, 14 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -50,6 +50,11 @@ npm run build
 ```
 
 Integration tests include Alembic upgrade/downgrade on a **temporary** database (created and dropped in the test; main DB volume untouched).
+
+## Phase 1D.2a — Alembic test safety (complete)
+
+- Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
+- Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
 
 ## Explicitly not in scope yet
 
