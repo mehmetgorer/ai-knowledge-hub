@@ -5,6 +5,8 @@ from pydantic import Field, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
+from ai_knowledge_hub_api.auth.errors import AuthenticationConfigurationError
+
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _API_ROOT = _PACKAGE_DIR.parent.parent
 _REPO_ROOT = _API_ROOT.parent.parent
@@ -58,6 +60,33 @@ class Settings(BaseSettings):
         default=5.0,
         validation_alias="DATABASE_CONNECT_TIMEOUT",
     )
+
+    auth_jwks_url: str | None = Field(
+        default=None,
+        validation_alias="AUTH_JWKS_URL",
+    )
+    auth_issuer: str | None = Field(
+        default=None,
+        validation_alias="AUTH_ISSUER",
+    )
+    auth_audience: str | None = Field(
+        default=None,
+        validation_alias="AUTH_AUDIENCE",
+    )
+    auth_jwks_cache_ttl_seconds: float = Field(
+        default=300.0,
+        validation_alias="AUTH_JWKS_CACHE_TTL_SECONDS",
+    )
+    auth_jwks_request_timeout_seconds: float = Field(
+        default=10.0,
+        validation_alias="AUTH_JWKS_REQUEST_TIMEOUT_SECONDS",
+    )
+
+    def require_auth_configuration(self) -> None:
+        if not self.auth_jwks_url or not self.auth_issuer:
+            raise AuthenticationConfigurationError(
+                "AUTH_JWKS_URL and AUTH_ISSUER must be configured for protected routes"
+            )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

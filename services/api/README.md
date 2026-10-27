@@ -43,6 +43,7 @@ uv run ai-knowledge-hub-api
 | -------- | ----------- |
 | `GET /health/live` | Process liveness (no database) |
 | `GET /health/ready` | `SELECT 1` against PostgreSQL; `503` if unreachable |
+| `GET /auth/me` | Verified JWT subject (`Authorization: Bearer`); requires `AUTH_JWKS_URL` + `AUTH_ISSUER` |
 
 ## Quality checks
 
@@ -59,7 +60,7 @@ Default (unit only, no PostgreSQL required):
 uv run pytest
 ```
 
-Last verified: **17 passed**, 3 deselected (`integration`).
+Last verified: **30 passed**, 3 deselected (`integration`).
 
 PostgreSQL integration (requires `docker compose up -d` from repo root):
 

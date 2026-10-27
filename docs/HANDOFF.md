@@ -39,7 +39,7 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 17 passed, 3 deselected
+uv run pytest                    # unit: 30 passed, 3 deselected
 uv run pytest -m integration     # integration: 3 passed, 17 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
@@ -55,6 +55,14 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
+
+## Phase 2B.1 — JWT auth verification (complete)
+
+- **PyJWT** + **cryptography**; EdDSA-only bearer verification against **AUTH_JWKS_URL** (cached JWKS client).
+- **AUTH_ISSUER** required; optional **AUTH_AUDIENCE** when tokens include `aud`.
+- Fail closed if auth is not configured (`503` on protected routes).
+- `GET /auth/me` returns verified `subject` only; `/health/*` remain public.
+- Unit tests use local Ed25519 keys and mocked JWKS resolvers (no Neon or network in tests).
 
 ## Phase 2A — Core data model (complete)
 

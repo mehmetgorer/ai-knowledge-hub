@@ -12,3 +12,7 @@ class HealthReadyResponse(BaseModel):
     service: str
     status: Literal["healthy", "unavailable"]
     database: Literal["connected", "unavailable"]
+
+
+class AuthMeResponse(BaseModel):
+    subject: str
