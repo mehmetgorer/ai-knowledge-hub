@@ -2,39 +2,83 @@
 
 Independent, professional AI-powered document intelligence platform.
 
-## Phase 1A — Frontend foundation
+Repository: [github.com/mehmetgorer/ai-knowledge-hub](https://github.com/mehmetgorer/ai-knowledge-hub)
 
-This repository is an npm monorepo. The web application lives in `apps/web` (Next.js App Router, TypeScript, Tailwind CSS, ESLint).
+## Stack
+
+| Area | Location | Stack |
+| ---- | -------- | ----- |
+| Frontend | `apps/web` | Next.js (App Router), TypeScript, Tailwind CSS, ESLint |
+| API | `services/api` | Python 3.12, FastAPI, Pydantic Settings, Uvicorn, uv |
+
+Python and npm dependencies are managed independently.
 
 ## Prerequisites
 
-- Node.js 20+
-- npm 10+
+- Node.js 20+ and npm 10+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 
-## Commands
+### Install uv (Windows)
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Add uv to your session if needed:
+
+```powershell
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+```
+
+## Frontend (`apps/web`)
 
 From the repository root:
 
-| Command        | Description                          |
-| -------------- | ------------------------------------ |
-| `npm install`  | Install dependencies (uses lockfile)   |
-| `npm run dev`  | Start Next.js dev server (`apps/web`) |
-| `npm run lint` | Run ESLint                           |
-| `npm run typecheck` | Run TypeScript (`tsc --noEmit`) |
-| `npm run build` | Production build for `apps/web`     |
+| Command | Description |
+| ------- | ----------- |
+| `npm install` | Install Node dependencies |
+| `npm run dev` | Next.js dev server |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run build` | Production build |
 
-The dev server runs at [http://localhost:3000](http://localhost:3000).
+Dev URL: [http://localhost:3000](http://localhost:3000)
+
+## API (`services/api`)
+
+```powershell
+cd services\api
+uv sync
+Copy-Item .env.example .env
+uv run ai-knowledge-hub-api
+```
+
+| Command | Description |
+| ------- | ----------- |
+| `uv sync` | Install dependencies from `uv.lock` |
+| `uv run ai-knowledge-hub-api` | Start Uvicorn |
+| `uv run ruff check .` | Lint |
+| `uv run ruff format --check .` | Format check |
+| `uv run pytest` | API tests |
+
+API base URL (default): [http://localhost:8000](http://localhost:8000)  
+Health: `GET /health/live`
+
+CORS allows origins from `CORS_ORIGINS` (comma-separated). Default: `http://localhost:3000`.
 
 ## Project layout
 
 ```
 .
 ├── apps/
-│   └── web/          # Next.js frontend
+│   └── web/              # Next.js frontend
+├── services/
+│   └── api/              # FastAPI backend
 ├── docs/
-│   └── HANDOFF.md    # Implementation notes and next steps
-├── package.json      # Workspace root
+│   └── HANDOFF.md
+├── package.json          # npm workspace root
 └── package-lock.json
 ```
 
-See `docs/HANDOFF.md` for what is implemented and what comes next.
+See `docs/HANDOFF.md` for phase status and next steps.
