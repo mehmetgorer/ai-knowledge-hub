@@ -13,7 +13,20 @@ uv sync
 
 Copy `.env.example` to `.env` for API-specific settings. Database credentials are read from the **repository root** `.env` (`POSTGRES_*`) when present; optional `DATABASE_URL` overrides the built URL.
 
-Start local PostgreSQL from the repo root (`docker compose up -d`) before readiness checks.
+Start local PostgreSQL from the repo root (`docker compose up -d`) before readiness checks and migrations.
+
+## Database migrations (Alembic)
+
+From `services/api` (uses the same Settings / root `.env` as the API):
+
+```powershell
+uv run alembic upgrade head
+uv run alembic current
+uv run alembic history
+uv run alembic downgrade base
+```
+
+Initial revision `0001_enable_vector` runs `CREATE EXTENSION IF NOT EXISTS vector`. Downgrade does **not** drop the extension (see migration docstring).
 
 ## Run
 
@@ -41,7 +54,7 @@ Default (unit only, no PostgreSQL required):
 uv run pytest
 ```
 
-Last verified: **9 passed**, 1 deselected (`integration`).
+Last verified: **9 passed**, 2 deselected (`integration`).
 
 PostgreSQL integration (requires `docker compose up -d` from repo root):
 
@@ -49,6 +62,6 @@ PostgreSQL integration (requires `docker compose up -d` from repo root):
 uv run pytest -m integration
 ```
 
-Last verified: **1 passed**, 9 deselected (Docker Postgres on `127.0.0.1:5433`).
+Last verified: **2 passed**, 9 deselected (connectivity + Alembic on a temporary database).
 
 If Postgres is unreachable, the integration test **fails** (no skip).

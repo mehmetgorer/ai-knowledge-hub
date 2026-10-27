@@ -1,0 +1,4 @@
+Generic single-database configuration.
+
+Migrations use `ai_knowledge_hub_api.config.Settings` for the database URL.
+Run commands from `services/api` with `uv run alembic <command>`.
