@@ -56,6 +56,15 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
 
+## Phase 2B.2a — Next.js Neon Auth (complete)
+
+- **`@neondatabase/auth`** in `apps/web`: server (`lib/auth/server.ts`), browser client (`lib/auth/client.ts`), `GET/POST` at `/api/auth/[...path]`.
+- Email/password sign-up and sign-in (`/auth/sign-up`, `/auth/sign-in`); sign-out from dashboard.
+- **`/dashboard`** protected via `proxy.ts` (`auth.middleware`) plus server-side `getSession()` on the page.
+- Env (local only, not in CI): `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` (≥32 chars) — see `apps/web/.env.example`. Values from Neon Console → Branch → Auth → Configuration ([Next.js API quick start](https://neon.com/docs/auth/quick-start/nextjs-api-only)).
+- Missing env: no fake sessions; auth API returns `503`; protected routes redirect to sign-in; forms show a configuration message.
+- FastAPI JWT forwarding not wired yet (`AUTH_JWKS_URL` / `AUTH_ISSUER` for later Neon JWT plugin integration).
+
 ## Phase 2B.1a — JWKS security fix (complete)
 
 - `PyJWKClient` uses `cache_keys=False`; bounded JWK-set cache via `lifespan` / timeout.
@@ -88,12 +97,12 @@ Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections
 
 ## Explicitly not in scope yet
 
-- Authentication, API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
+- FastAPI bearer forwarding from Next.js sessions, API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
 
 ## Recommended next steps
 
-1. Verified auth integration and collection/document API endpoints.
+1. Wire FastAPI `AUTH_JWKS_URL` / `AUTH_ISSUER` to Neon JWT plugin; collection/document API endpoints.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 
