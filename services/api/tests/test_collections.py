@@ -3,11 +3,23 @@ import pytest
 from pydantic import ValidationError
 
 from ai_knowledge_hub_api.app import create_app
+from ai_knowledge_hub_api.config import get_settings
 from ai_knowledge_hub_api.schemas import CollectionCreateRequest
+from tests.auth_keys import TEST_ISSUER, TEST_JWKS_URL
+
+
+@pytest.fixture
+def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH_JWKS_URL", TEST_JWKS_URL)
+    monkeypatch.setenv("AUTH_ISSUER", TEST_ISSUER)
+    monkeypatch.setenv("AUTH_AUDIENCE", "")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.mark.anyio
-async def test_create_collection_requires_authentication() -> None:
+async def test_create_collection_requires_authentication(auth_env: None) -> None:
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -16,7 +28,7 @@ async def test_create_collection_requires_authentication() -> None:
 
 
 @pytest.mark.anyio
-async def test_list_collections_requires_authentication() -> None:
+async def test_list_collections_requires_authentication(auth_env: None) -> None:
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
