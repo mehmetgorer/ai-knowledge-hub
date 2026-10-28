@@ -5,6 +5,7 @@ import { AUTH_CONFIGURATION_ERROR } from "@/lib/auth/config";
 import { getNeonAuth } from "@/lib/auth/server";
 
 import { SignOutButton } from "./sign-out-button";
+import { VerifyPythonApi } from "./verify-python-api";
 
 export const instant = false;
 
@@ -68,6 +69,7 @@ export default async function DashboardPage() {
           </div>
         ) : null}
       </dl>
+      {user.id ? <VerifyPythonApi sessionUserId={user.id} /> : null}
       <div className="mt-8 max-w-xs">
         <SignOutButton />
       </div>

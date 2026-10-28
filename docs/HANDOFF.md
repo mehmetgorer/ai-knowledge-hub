@@ -63,7 +63,14 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - **`/dashboard`** protected via `proxy.ts` (`auth.middleware`) plus server-side `getSession()` on the page.
 - Env (local only, not in CI): `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` (≥32 chars) — see `apps/web/.env.example`. Values from Neon Console → Branch → Auth → Configuration ([Next.js API quick start](https://neon.com/docs/auth/quick-start/nextjs-api-only)).
 - Missing env: no fake sessions; auth API returns `503`; protected routes redirect to sign-in; forms show a configuration message.
-- FastAPI JWT forwarding not wired yet (`AUTH_JWKS_URL` / `AUTH_ISSUER` for later Neon JWT plugin integration).
+- Dashboard **Verify Python API** button: `authClient.token()` → `GET {NEXT_PUBLIC_API_BASE_URL}/auth/me` with `Authorization: Bearer` (token kept in memory for the request only).
+
+## Phase 2B.2b — Next.js → FastAPI JWT (complete)
+
+- Client-only verification on `/dashboard`; no JWT persistence in storage or React state beyond the in-flight request.
+- Frontend: `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env.example` (default `http://localhost:8000` for local dev).
+- API: configure `AUTH_JWKS_URL`, `AUTH_ISSUER`, and usually `AUTH_AUDIENCE` (issuer origin) per [Neon JWT guide](https://neon.com/docs/auth/guides/plugins/jwt) — see `services/api/.env.example`.
+- FastAPI continues EdDSA JWKS verification; no auth bypass.
 
 ## Phase 2B.1a — JWKS security fix (complete)
 
@@ -97,12 +104,12 @@ Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections
 
 ## Explicitly not in scope yet
 
-- FastAPI bearer forwarding from Next.js sessions, API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
+- Collection/document API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
 
 ## Recommended next steps
 
-1. Wire FastAPI `AUTH_JWKS_URL` / `AUTH_ISSUER` to Neon JWT plugin; collection/document API endpoints.
+1. Collection/document API endpoints with verified `owner_subject`.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 
