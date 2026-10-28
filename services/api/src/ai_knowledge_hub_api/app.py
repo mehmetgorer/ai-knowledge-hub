@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_knowledge_hub_api.config import get_settings
 from ai_knowledge_hub_api.database import dispose_engine
-from ai_knowledge_hub_api.routers import auth, health
+from ai_knowledge_hub_api.routers import auth, collections, health
 
 
 @asynccontextmanager
@@ -28,4 +28,5 @@ def create_app() -> FastAPI:
 
     application.include_router(health.router)
     application.include_router(auth.router)
+    application.include_router(collections.router)
     return application

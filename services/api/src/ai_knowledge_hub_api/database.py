@@ -35,3 +35,6 @@ def dispose_engine() -> None:
     if _engine is not None:
         _engine.dispose()
         _engine = None
+    from ai_knowledge_hub_api.db_session import reset_session_factory
+
+    reset_session_factory()

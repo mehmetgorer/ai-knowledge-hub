@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 43 passed, 3 deselected
-uv run pytest -m integration     # integration: 3 passed, 17 deselected
+uv run pytest                    # unit: 49 passed, 6 deselected
+uv run pytest -m integration     # integration: 6 passed, 49 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -55,6 +55,13 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
+
+## Phase 2C.1 — Collection API (complete)
+
+- **`POST /collections`** — create with validated non-empty `name`; `owner_subject` from `get_current_subject` only.
+- **`GET /collections`** — list current user’s collections (`created_at` descending); response includes `id`, `name`, `created_at`, `updated_at` (no cross-user access).
+- SQLAlchemy session via `db_session.get_db`; no new migrations.
+- Unit tests (auth + schema validation); integration tests on temporary `alembic_test_*` databases.
 
 ## Phase 2B.2a — Next.js Neon Auth (complete)
 
@@ -95,7 +102,7 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 ## Phase 2A — Core data model (complete)
 
 - SQLAlchemy models: **Collection** (`owner_subject`, `name`, UUID/timestamptz) and **Document** (FK to collection, file metadata, `document_status` enum, optional SHA-256 hex, `storage_key` unique).
-- `owner_subject` is for verified IdP subjects only (documented on the model; no auth implementation yet).
+- `owner_subject` is for verified IdP subjects only; set from JWT via Collection API (Phase 2C.1).
 - Alembic **`0002_collections_documents`** after `0001_enable_vector`; `env.py` uses `Base.metadata`.
 - Unit model tests; integration tests for migrations and FK/cascade on temporary DBs only.
 
@@ -110,12 +117,12 @@ Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections
 
 ## Explicitly not in scope yet
 
-- Collection/document API CRUD, document upload/storage, chunking/embeddings, RAG/LLM.
+- Document upload/API, chunking/embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
 
 ## Recommended next steps
 
-1. Collection/document API endpoints with verified `owner_subject`.
+1. Document endpoints and upload pipeline with verified ownership.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 
