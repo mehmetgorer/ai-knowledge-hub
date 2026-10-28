@@ -32,6 +32,8 @@ def mint_access_token(
     subject: str = "neon-auth|user-123",
     issuer: str = TEST_ISSUER,
     expires_in_seconds: int = 3600,
+    issued_at: int | None = None,
+    not_before: int | None = None,
     extra_claims: dict[str, object] | None = None,
     signing_key: Ed25519PrivateKey | None = None,
     algorithm: str = "EdDSA",
@@ -41,8 +43,10 @@ def mint_access_token(
         "sub": subject,
         "iss": issuer,
         "exp": now + expires_in_seconds,
-        "iat": now,
+        "iat": issued_at if issued_at is not None else now,
     }
+    if not_before is not None:
+        payload["nbf"] = not_before
     if extra_claims:
         payload.update(extra_claims)
 

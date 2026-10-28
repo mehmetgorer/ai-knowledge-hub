@@ -4,6 +4,9 @@ from ai_knowledge_hub_api.auth.errors import AuthenticationError
 from ai_knowledge_hub_api.auth.jwks import ALLOWED_JWT_ALGORITHM, JwksKeyResolver
 from ai_knowledge_hub_api.config import Settings
 
+# Tolerates small issuer/client clock skew (Neon JWT iat can be ~0.3s ahead).
+JWT_CLOCK_SKEW_LEEWAY_SECONDS = 5
+
 
 def verify_access_token(
     token: str,
@@ -25,6 +28,7 @@ def verify_access_token(
     decode_kwargs: dict[str, object] = {
         "algorithms": [ALLOWED_JWT_ALGORITHM],
         "issuer": settings.auth_issuer,
+        "leeway": JWT_CLOCK_SKEW_LEEWAY_SECONDS,
         "options": {
             "require": ["sub", "exp", "iss"],
             "verify_aud": bool(settings.auth_audience),

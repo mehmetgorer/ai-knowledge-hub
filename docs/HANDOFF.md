@@ -39,7 +39,7 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 36 passed, 3 deselected
+uv run pytest                    # unit: 43 passed, 3 deselected
 uv run pytest -m integration     # integration: 3 passed, 17 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
@@ -71,6 +71,12 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Frontend: `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env.example` (default `http://localhost:8000` for local dev).
 - API: configure `AUTH_JWKS_URL`, `AUTH_ISSUER`, and usually `AUTH_AUDIENCE` (issuer origin) per [Neon JWT guide](https://neon.com/docs/auth/guides/plugins/jwt) — see `services/api/.env.example`.
 - FastAPI continues EdDSA JWKS verification; no auth bypass.
+
+## Phase 2B.2c — JWT clock skew leeway (complete)
+
+- **Root cause:** Neon JWT `iat` can be ~0.3s ahead of the API host UTC clock; PyJWT with `leeway=0` raised `ImmatureSignatureError` (401).
+- **Fix:** `JWT_CLOCK_SKEW_LEEWAY_SECONDS = 5` passed to `jwt.decode()` in `auth/verifier.py` (EdDSA, issuer, audience, exp, iat, and nbf checks unchanged).
+- Temporary `TEMP_AUTH_DIAG*` logging removed.
 
 ## Phase 2B.1a — JWKS security fix (complete)
 

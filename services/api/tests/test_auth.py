@@ -37,6 +37,7 @@ def key_pair() -> Ed25519KeyPair:
 def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTH_JWKS_URL", TEST_JWKS_URL)
     monkeypatch.setenv("AUTH_ISSUER", TEST_ISSUER)
+    monkeypatch.setenv("AUTH_AUDIENCE", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -179,8 +180,9 @@ async def test_auth_me_unsupported_algorithm_returns_401(
 async def test_auth_me_missing_configuration_returns_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AUTH_JWKS_URL", raising=False)
-    monkeypatch.delenv("AUTH_ISSUER", raising=False)
+    monkeypatch.setenv("AUTH_JWKS_URL", "")
+    monkeypatch.setenv("AUTH_ISSUER", "")
+    monkeypatch.setenv("AUTH_AUDIENCE", "")
     get_settings.cache_clear()
 
     app = create_app()
@@ -214,8 +216,9 @@ async def test_auth_me_jwks_unavailable_returns_503(
 async def test_health_endpoints_remain_public_without_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AUTH_JWKS_URL", raising=False)
-    monkeypatch.delenv("AUTH_ISSUER", raising=False)
+    monkeypatch.setenv("AUTH_JWKS_URL", "")
+    monkeypatch.setenv("AUTH_ISSUER", "")
+    monkeypatch.setenv("AUTH_AUDIENCE", "")
     get_settings.cache_clear()
 
     app = create_app()

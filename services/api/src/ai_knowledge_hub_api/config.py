@@ -86,9 +86,18 @@ class Settings(BaseSettings):
     @field_validator("auth_jwks_url")
     @classmethod
     def _validate_auth_jwks_url(cls, value: str | None) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        return validate_auth_jwks_url(str(value).strip())
+
+    @field_validator("auth_issuer", "auth_audience", mode="before")
+    @classmethod
+    def _empty_auth_string_to_none(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return validate_auth_jwks_url(value)
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     def require_auth_configuration(self) -> None:
         if not self.auth_jwks_url or not self.auth_issuer:
