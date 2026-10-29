@@ -234,6 +234,12 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Dashboard **Documents** panel: per-status actions (Process / Retry / Reprocess), processing state display, per-row feedback with **chunk count from the latest process response only** (not from GET documents).
 - **`processDocument`** in `apps/web/lib/api/client.ts` — authenticated POST with response validation and 401/404/409/422/network handling.
 
+## Phase 2D.3c.3a — Processing UI race fix (complete)
+
+- Process completion refreshes the document list **only when that collection is still selected**, avoiding `documentsRequestIdRef` invalidating another collection’s fetch.
+- Synchronous **`tryAcquireProcessLock`** / **`finally` release** prevents duplicate process requests and leaked in-flight IDs.
+- Stale process feedback is dropped when the user switched collections before completion.
+
 ### Usage (library)
 
 ```python

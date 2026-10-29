@@ -17,6 +17,12 @@ import {
   type CollectionRecord,
   type DocumentRecord,
 } from "@/lib/api/client";
+import {
+  releaseProcessLock,
+  shouldApplyProcessFeedback,
+  shouldRefreshDocumentsAfterProcess,
+  tryAcquireProcessLock,
+} from "@/lib/documents/processing-ui-guards";
 
 type CollectionsLoadState =
   | { kind: "loading" }
@@ -215,45 +221,61 @@ export function DocumentsPanel() {
       if (!collectionIdAtStart) {
         return;
       }
-      processingDocumentIdsRef.current.add(documentId);
+      if (!tryAcquireProcessLock(processingDocumentIdsRef.current, documentId)) {
+        return;
+      }
+
       setProcessFeedbackByDocumentId((current) => ({
         ...current,
         [documentId]: { kind: "loading" },
       }));
 
-      const result = await processDocument(collectionIdAtStart, documentId);
-      processingDocumentIdsRef.current.delete(documentId);
+      try {
+        const result = await processDocument(collectionIdAtStart, documentId);
 
-      const requestId = ++documentsRequestIdRef.current;
-      await runDocumentsFetch(collectionIdAtStart, requestId);
+        const selectedNow = selectedCollectionIdRef.current;
+        if (
+          shouldRefreshDocumentsAfterProcess(selectedNow, collectionIdAtStart)
+        ) {
+          const requestId = ++documentsRequestIdRef.current;
+          await runDocumentsFetch(collectionIdAtStart, requestId);
+        }
 
-      if (selectedCollectionIdRef.current !== collectionIdAtStart) {
-        setProcessFeedbackByDocumentId((current) => {
-          if (!(documentId in current)) {
-            return current;
-          }
-          const next = { ...current };
-          delete next[documentId];
-          return next;
-        });
-        return;
-      }
+        if (
+          !shouldApplyProcessFeedback(
+            selectedCollectionIdRef.current,
+            collectionIdAtStart,
+          )
+        ) {
+          setProcessFeedbackByDocumentId((current) => {
+            if (!(documentId in current)) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[documentId];
+            return next;
+          });
+          return;
+        }
 
-      if (!result.ok) {
+        if (!result.ok) {
+          setProcessFeedbackByDocumentId((current) => ({
+            ...current,
+            [documentId]: { kind: "error", message: result.error.message },
+          }));
+          return;
+        }
+
         setProcessFeedbackByDocumentId((current) => ({
           ...current,
-          [documentId]: { kind: "error", message: result.error.message },
+          [documentId]: {
+            kind: "success",
+            chunkCount: result.process.chunk_count,
+          },
         }));
-        return;
+      } finally {
+        releaseProcessLock(processingDocumentIdsRef.current, documentId);
       }
-
-      setProcessFeedbackByDocumentId((current) => ({
-        ...current,
-        [documentId]: {
-          kind: "success",
-          chunkCount: result.process.chunk_count,
-        },
-      }));
     },
     [runDocumentsFetch],
   );
