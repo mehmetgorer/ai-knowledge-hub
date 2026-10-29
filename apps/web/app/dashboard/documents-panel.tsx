@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
   authButtonClassName,
@@ -24,6 +24,12 @@ type CollectionsLoadState =
 
 type DocumentsLoadState =
   | { kind: "idle" }
+  | { kind: "loading"; collectionId: string }
+  | { kind: "ready"; collectionId: string; documents: DocumentRecord[] }
+  | { kind: "error"; collectionId: string; message: string };
+
+type DocumentsViewState =
+  | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "ready"; documents: DocumentRecord[] }
   | { kind: "error"; message: string };
@@ -46,6 +52,28 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function documentsViewForSelection(
+  selectedCollectionId: string,
+  documentsState: DocumentsLoadState,
+): DocumentsViewState {
+  if (!selectedCollectionId) {
+    return { kind: "idle" };
+  }
+  if (documentsState.kind === "idle") {
+    return { kind: "loading" };
+  }
+  if (documentsState.collectionId !== selectedCollectionId) {
+    return { kind: "loading" };
+  }
+  if (documentsState.kind === "loading") {
+    return { kind: "loading" };
+  }
+  if (documentsState.kind === "error") {
+    return { kind: "error", message: documentsState.message };
+  }
+  return { kind: "ready", documents: documentsState.documents };
+}
+
 export function DocumentsPanel() {
   const collectionFieldId = useId();
   const fileFieldId = useId();
@@ -54,6 +82,8 @@ export function DocumentsPanel() {
     { kind: "loading" },
   );
   const [selectedCollectionId, setSelectedCollectionId] = useState("");
+  const documentsRequestIdRef = useRef(0);
+
   const [documentsState, setDocumentsState] = useState<DocumentsLoadState>({
     kind: "idle",
   });
@@ -62,9 +92,43 @@ export function DocumentsPanel() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [loadedForCollectionId, setLoadedForCollectionId] = useState<
-    string | null
-  >(null);
+
+  const runDocumentsFetch = useCallback(
+    (collectionId: string, requestId: number): Promise<void> => {
+      return (async () => {
+        setDocumentsState({ kind: "loading", collectionId });
+
+        const result = await fetchDocuments(collectionId);
+        if (documentsRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        if (!result.ok) {
+          setDocumentsState({
+            kind: "error",
+            collectionId,
+            message: result.error.message,
+          });
+          return;
+        }
+
+        setDocumentsState({
+          kind: "ready",
+          collectionId,
+          documents: result.documents,
+        });
+      })();
+    },
+    [],
+  );
+
+  const retryDocumentsLoad = useCallback(() => {
+    if (!selectedCollectionId) {
+      return;
+    }
+    const requestId = ++documentsRequestIdRef.current;
+    void runDocumentsFetch(selectedCollectionId, requestId);
+  }, [selectedCollectionId, runDocumentsFetch]);
 
   const loadCollections = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -85,21 +149,6 @@ export function DocumentsPanel() {
       }
       return result.collections[0]?.id ?? "";
     });
-  }, []);
-
-  const loadDocuments = useCallback(async (collectionId: string) => {
-    if (!collectionId) {
-      setDocumentsState({ kind: "idle" });
-      setLoadedForCollectionId(null);
-      return;
-    }
-    const result = await fetchDocuments(collectionId);
-    if (!result.ok) {
-      setDocumentsState({ kind: "error", message: result.error.message });
-      return;
-    }
-    setDocumentsState({ kind: "ready", documents: result.documents });
-    setLoadedForCollectionId(collectionId);
   }, []);
 
   useEffect(() => {
@@ -127,26 +176,9 @@ export function DocumentsPanel() {
     if (!selectedCollectionId) {
       return;
     }
-
-    let cancelled = false;
-
-    void (async () => {
-      const result = await fetchDocuments(selectedCollectionId);
-      if (cancelled) {
-        return;
-      }
-      if (!result.ok) {
-        setDocumentsState({ kind: "error", message: result.error.message });
-        return;
-      }
-      setDocumentsState({ kind: "ready", documents: result.documents });
-      setLoadedForCollectionId(selectedCollectionId);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCollectionId]);
+    const requestId = ++documentsRequestIdRef.current;
+    void runDocumentsFetch(selectedCollectionId, requestId);
+  }, [selectedCollectionId, runDocumentsFetch]);
 
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,17 +207,17 @@ export function DocumentsPanel() {
     setSelectedFile(null);
     setFileInputKey((key) => key + 1);
     setUploadSuccess(`“${result.document.original_filename}” uploaded.`);
-    await loadDocuments(selectedCollectionId);
+    const requestId = ++documentsRequestIdRef.current;
+    await runDocumentsFetch(selectedCollectionId, requestId);
   }
 
   const collectionsReady =
     collectionsState.kind === "ready" && collectionsState.collections.length > 0;
 
-  const documentsPendingForSelection =
-    Boolean(selectedCollectionId) &&
-    loadedForCollectionId !== selectedCollectionId;
-
-  const showDocumentsSection = Boolean(selectedCollectionId);
+  const documentsView = documentsViewForSelection(
+    selectedCollectionId,
+    documentsState,
+  );
 
   return (
     <section
@@ -299,7 +331,7 @@ export function DocumentsPanel() {
                 isUploading ||
                 !selectedCollectionId ||
                 !selectedFile ||
-                documentsPendingForSelection
+                documentsView.kind === "loading"
               }
               className={`${authButtonClassName} w-full sm:w-auto sm:min-w-[9rem]`}
             >
@@ -327,7 +359,7 @@ export function DocumentsPanel() {
               Files in this collection
             </h3>
 
-            {documentsPendingForSelection ? (
+            {documentsView.kind === "loading" ? (
               <p
                 className="text-sm text-zinc-600 dark:text-zinc-400"
                 role="status"
@@ -336,21 +368,19 @@ export function DocumentsPanel() {
               </p>
             ) : null}
 
-            {!documentsPendingForSelection &&
-            documentsState.kind === "error" &&
-            showDocumentsSection ? (
+            {documentsView.kind === "error" ? (
               <div className="space-y-3">
                 <p
                   className="text-sm text-red-600 dark:text-red-400"
                   role="alert"
                 >
-                  {documentsState.message}
+                  {documentsView.message}
                 </p>
                 <button
                   type="button"
                   className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
                   onClick={() => {
-                    void loadDocuments(selectedCollectionId);
+                    retryDocumentsLoad();
                   }}
                 >
                   Retry
@@ -358,10 +388,8 @@ export function DocumentsPanel() {
               </div>
             ) : null}
 
-            {!documentsPendingForSelection &&
-            documentsState.kind === "ready" &&
-            showDocumentsSection &&
-            documentsState.documents.length === 0 ? (
+            {documentsView.kind === "ready" &&
+            documentsView.documents.length === 0 ? (
               <p
                 className="text-sm text-zinc-600 dark:text-zinc-400"
                 role="status"
@@ -370,10 +398,8 @@ export function DocumentsPanel() {
               </p>
             ) : null}
 
-            {!documentsPendingForSelection &&
-            documentsState.kind === "ready" &&
-            showDocumentsSection &&
-            documentsState.documents.length > 0 ? (
+            {documentsView.kind === "ready" &&
+            documentsView.documents.length > 0 ? (
               <div className="overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
                 <table className="min-w-full text-left text-sm">
                   <caption className="sr-only">
@@ -396,7 +422,7 @@ export function DocumentsPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {documentsState.documents.map((document) => (
+                    {documentsView.documents.map((document) => (
                       <tr key={document.id}>
                         <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                           {document.original_filename}

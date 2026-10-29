@@ -154,6 +154,12 @@ Manual multipart upload against a running API: **not verified in automation**.
 
 Manual browser upload, collection switch, and F5 persistence: **not verified in this session** unless local web/API/Postgres were exercised end-to-end.
 
+## Phase 2D.2a — Document list error state fix (complete)
+
+- Document fetch state is keyed by `collectionId` on loading / ready / error (removed `loadedForCollectionId` pending heuristic that hid errors).
+- `documentsViewForSelection` derives UI from the selected collection; stale responses ignored via monotonic `documentsRequestIdRef`.
+- Retry and post-upload refresh unchanged in behavior.
+
 ## Recommended next steps
 
 1. Document parsing / chunking pipeline after upload.
