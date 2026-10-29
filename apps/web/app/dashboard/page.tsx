@@ -6,6 +6,7 @@ import { getNeonAuth } from "@/lib/auth/server";
 
 import { SignOutButton } from "./sign-out-button";
 import { CollectionsPanel } from "./collections-panel";
+import { DocumentsPanel } from "./documents-panel";
 import { VerifyPythonApi } from "./verify-python-api";
 
 export const instant = false;
@@ -43,6 +44,7 @@ export default async function DashboardPage() {
         Signed in as {user.name ?? user.email ?? "your account"}.
       </p>
       <CollectionsPanel />
+      <DocumentsPanel />
       {user.id ? <VerifyPythonApi sessionUserId={user.id} /> : null}
       <div className="mt-8 max-w-xs">
         <SignOutButton />

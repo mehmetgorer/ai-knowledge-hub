@@ -8,6 +8,22 @@ export type CollectionRecord = {
   updated_at: string;
 };
 
+export type DocumentRecord = {
+  id: string;
+  collection_id: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  status: string;
+  content_hash_sha256: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const MAX_DOCUMENT_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+const DOCUMENT_ALLOWED_EXTENSIONS = new Set([".pdf", ".txt", ".md"]);
+
 export type ApiClientError = {
   message: string;
   status?: number;
@@ -56,6 +72,15 @@ export function mapHttpStatusToMessage(status: number): string {
   if (status === 401) {
     return "Your session was rejected by the API (401). Sign in again or check API auth configuration.";
   }
+  if (status === 400) {
+    return "The upload was rejected (400). Check file type and content.";
+  }
+  if (status === 404) {
+    return "Collection not found (404). It may have been removed or you lack access.";
+  }
+  if (status === 413) {
+    return "File exceeds the maximum upload size (413). Limit is 10 MB.";
+  }
   if (status === 422) {
     return "Invalid collection name (422). Use a non-empty name up to 255 characters.";
   }
@@ -69,7 +94,7 @@ export async function readApiErrorMessage(response: Response): Promise<string> {
   const fallback = mapHttpStatusToMessage(response.status);
   try {
     const body: unknown = await response.json();
-    if (response.status === 422 && body && typeof body === "object") {
+    if (body && typeof body === "object") {
       const detail = (body as { detail?: unknown }).detail;
       if (typeof detail === "string" && detail.trim()) {
         return detail;
@@ -112,7 +137,9 @@ export async function authedApiRequest(
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${tokenResult.token}`);
   headers.set("Accept", "application/json");
-  if (init.body && !headers.has("Content-Type")) {
+  const isFormDataBody =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !headers.has("Content-Type") && !isFormDataBody) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -231,4 +258,129 @@ export function validateCollectionNameInput(raw: string): string | null {
     return null;
   }
   return trimmed;
+}
+
+function fileExtensionLower(name: string): string {
+  const lastDot = name.lastIndexOf(".");
+  if (lastDot <= 0) {
+    return "";
+  }
+  return name.slice(lastDot).toLowerCase();
+}
+
+/** Returns an error message, or null when the file passes client-side checks. */
+export function validateDocumentFile(file: File): string | null {
+  if (file.size === 0) {
+    return "Choose a non-empty file.";
+  }
+  if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    return "File must be 10 MB or smaller.";
+  }
+  const extension = fileExtensionLower(file.name);
+  if (!DOCUMENT_ALLOWED_EXTENSIONS.has(extension)) {
+    return "Only PDF, TXT, and MD files are allowed.";
+  }
+  return null;
+}
+
+export function formatDocumentStatus(status: string): string {
+  if (status === "UPLOADED") {
+    return "Uploaded";
+  }
+  return status;
+}
+
+export async function fetchDocuments(
+  collectionId: string,
+): Promise<
+  | { ok: true; documents: DocumentRecord[] }
+  | { ok: false; error: ApiClientError }
+> {
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/documents`,
+    { method: "GET" },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON for documents." },
+    };
+  }
+
+  if (!Array.isArray(payload)) {
+    return {
+      ok: false,
+      error: { message: "The API returned an unexpected documents payload." },
+    };
+  }
+
+  const documents: DocumentRecord[] = [];
+  for (const item of payload) {
+    if (
+      item &&
+      typeof item === "object" &&
+      typeof (item as DocumentRecord).id === "string" &&
+      typeof (item as DocumentRecord).original_filename === "string" &&
+      typeof (item as DocumentRecord).size_bytes === "number" &&
+      typeof (item as DocumentRecord).status === "string" &&
+      typeof (item as DocumentRecord).created_at === "string"
+    ) {
+      documents.push(item as DocumentRecord);
+    }
+  }
+
+  return { ok: true, documents };
+}
+
+export async function uploadDocument(
+  collectionId: string,
+  file: File,
+): Promise<
+  | { ok: true; document: DocumentRecord }
+  | { ok: false; error: ApiClientError }
+> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/documents`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON after upload." },
+    };
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof (payload as DocumentRecord).id !== "string" ||
+    typeof (payload as DocumentRecord).original_filename !== "string"
+  ) {
+    return {
+      ok: false,
+      error: { message: "The API returned an unexpected upload response." },
+    };
+  }
+
+  return { ok: true, document: payload as DocumentRecord };
 }

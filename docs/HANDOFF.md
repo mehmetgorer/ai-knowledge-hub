@@ -144,9 +144,19 @@ uv run pytest -m integration   # requires local Docker Postgres
 
 Manual multipart upload against a running API: **not verified in automation**.
 
+## Phase 2D.2 — Document upload UI (complete)
+
+- Dashboard **Documents** panel (`documents-panel.tsx`): collection `<select>`, file input (PDF/TXT/MD), client-side 10 MB cap, upload via `POST /collections/{id}/documents` with `FormData`.
+- Document list via `GET /collections/{id}/documents` (filename, size, status shown as **Uploaded** for `UPLOADED`, upload timestamp). List refreshes after upload and when switching collections (cancelled fetches avoid stale rows).
+- `authedApiRequest` skips manual `Content-Type` for `FormData` so the browser sets the multipart boundary; JSON requests unchanged.
+- Loading / empty / error + retry; duplicate upload guard; Collections panel, sign-out, and Verify Python API unchanged.
+- Root `.gitignore`: `.venv/` restored; `services/api/var/` remains excluded.
+
+Manual browser upload, collection switch, and F5 persistence: **not verified in this session** unless local web/API/Postgres were exercised end-to-end.
+
 ## Recommended next steps
 
-1. Frontend document upload UI wired to these endpoints.
+1. Document parsing / chunking pipeline after upload.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 

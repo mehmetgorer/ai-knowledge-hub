@@ -41,10 +41,12 @@ infra/postgres/data/
 docker/postgres/data/
 *.sql.dump
 
-# Python local document uploads (development)
-services/api/var/
+# Python
+.venv/
 venv/
 __pycache__/
+# Local document uploads (development)
+services/api/var/
 *.py[cod]
 *$py.class
 .pytest_cache/
