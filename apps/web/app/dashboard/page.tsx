@@ -5,6 +5,7 @@ import { AUTH_CONFIGURATION_ERROR } from "@/lib/auth/config";
 import { getNeonAuth } from "@/lib/auth/server";
 
 import { SignOutButton } from "./sign-out-button";
+import { CollectionsPanel } from "./collections-panel";
 import { VerifyPythonApi } from "./verify-python-api";
 
 export const instant = false;
@@ -38,37 +39,10 @@ export default async function DashboardPage() {
       <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
         Dashboard
       </h1>
-      <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-        Signed in placeholder — API integration comes in a later phase.
+      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        Signed in as {user.name ?? user.email ?? "your account"}.
       </p>
-      <dl className="mt-8 space-y-4 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800">
-        <div>
-          <dt className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            Name
-          </dt>
-          <dd className="mt-1 text-zinc-900 dark:text-zinc-50">
-            {user.name ?? "—"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            Email
-          </dt>
-          <dd className="mt-1 text-zinc-900 dark:text-zinc-50">
-            {user.email ?? "—"}
-          </dd>
-        </div>
-        {user.id ? (
-          <div>
-            <dt className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-              User ID
-            </dt>
-            <dd className="mt-1 font-mono text-sm text-zinc-900 dark:text-zinc-50">
-              {user.id}
-            </dd>
-          </div>
-        ) : null}
-      </dl>
+      <CollectionsPanel />
       {user.id ? <VerifyPythonApi sessionUserId={user.id} /> : null}
       <div className="mt-8 max-w-xs">
         <SignOutButton />

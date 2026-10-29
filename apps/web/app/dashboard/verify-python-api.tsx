@@ -3,8 +3,7 @@
 import { useState } from "react";
 
 import { authButtonClassName } from "@/components/auth-shell";
-import { getApiBaseUrl } from "@/lib/api/config";
-import { authClient } from "@/lib/auth/client";
+import { authedApiRequest } from "@/lib/api/client";
 
 type VerifyResult =
   | { kind: "idle" }
@@ -26,82 +25,15 @@ export function VerifyPythonApi({ sessionUserId }: VerifyPythonApiProps) {
   async function handleVerify() {
     setResult({ kind: "loading" });
 
-    const apiBase = getApiBaseUrl();
-    if (!apiBase) {
-      setResult({
-        kind: "error",
-        message:
-          "NEXT_PUBLIC_API_BASE_URL is not set. Add it to apps/web/.env.local (see .env.example).",
-      });
-      return;
-    }
-
-    const { data, error } = await authClient.token();
-    if (error) {
-      setResult({
-        kind: "error",
-        message: error.message || "Could not obtain a session token. Sign in again.",
-      });
-      return;
-    }
-
-    const token = data?.token;
-    if (!token) {
-      setResult({
-        kind: "error",
-        message: "No JWT available for this session. Sign in again.",
-      });
-      return;
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(`${apiBase}/auth/me`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
-      });
-    } catch {
-      setResult({
-        kind: "error",
-        message:
-          "Cannot reach the Python API. Start the API locally and check NEXT_PUBLIC_API_BASE_URL.",
-      });
-      return;
-    }
-
-    if (response.status === 401) {
-      setResult({
-        kind: "error",
-        message:
-          "Python API rejected the token (401). Check AUTH_JWKS_URL, AUTH_ISSUER, and AUTH_AUDIENCE in services/api/.env.",
-      });
-      return;
-    }
-
-    if (response.status === 503) {
-      setResult({
-        kind: "error",
-        message:
-          "Python API authentication is unavailable (503). Configure API auth env vars or check JWKS connectivity.",
-      });
-      return;
-    }
-
-    if (!response.ok) {
-      setResult({
-        kind: "error",
-        message: `Unexpected response from Python API (${response.status}).`,
-      });
+    const apiResult = await authedApiRequest("/auth/me", { method: "GET" });
+    if (!apiResult.ok) {
+      setResult({ kind: "error", message: apiResult.error.message });
       return;
     }
 
     let payload: unknown;
     try {
-      payload = await response.json();
+      payload = await apiResult.response.json();
     } catch {
       setResult({
         kind: "error",

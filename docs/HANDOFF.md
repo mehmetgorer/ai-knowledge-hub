@@ -56,6 +56,12 @@ Integration tests include Alembic upgrade/downgrade on a **temporary** database 
 - Alembic integration subprocesses set explicit `DATABASE_URL` for the temporary database (overrides `.env`).
 - Destructive integration tests require local `POSTGRES_HOST` and `alembic_test_*` database names; main app DB revision is checked unchanged after the test.
 
+## Phase 2C.2 — Collections UI (complete)
+
+- Dashboard **Collections** panel: `authClient.token()` → `GET/POST /collections` via `lib/api/client.ts` (fresh JWT per request; not stored).
+- Loading, empty, error (with retry), create form with client-side name validation and duplicate-submit guard.
+- **Verify Python API** retained; shared `authedApiRequest` helper.
+
 ## Phase 2C.1 — Collection API (complete)
 
 - **`POST /collections`** — create with validated non-empty `name`; `owner_subject` from `get_current_subject` only.
