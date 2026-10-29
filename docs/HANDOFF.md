@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 49 passed, 6 deselected
-uv run pytest -m integration     # integration: 6 passed, 49 deselected
+uv run pytest                    # unit: 62 passed, 11 deselected
+uv run pytest -m integration     # integration: 11 passed, 62 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -123,12 +123,30 @@ Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections
 
 ## Explicitly not in scope yet
 
-- Document upload/API, chunking/embeddings, RAG/LLM.
+- Document parsing, chunking, embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
+
+## Phase 2D.1 — Document upload backend (complete)
+
+- **`POST /collections/{collection_id}/documents`** — authenticated multipart upload (PDF, TXT, MD; max 10 MB default). Server-side content validation; streamed read with size cap; SHA-256; status `UPLOADED`; collection ownership via `get_owned_collection_or_404`.
+- **`GET /collections/{collection_id}/documents`** — list metadata for owned collection only; responses exclude `storage_key` and filesystem paths.
+- **Storage:** `LocalDocumentStorage` under configurable `DOCUMENT_STORAGE_ROOT` (default `services/api/var/document_storage`, gitignored). Generated keys `documents/{collection_id}/{uuid}`; cleanup on DB commit failure.
+- Unit tests: validation, storage path safety, auth/schema; integration tests on temporary DB + temp storage directory.
+
+### Verification (from `services/api`)
+
+```powershell
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+uv run pytest -m integration   # requires local Docker Postgres
+```
+
+Manual multipart upload against a running API: **not verified in automation**.
 
 ## Recommended next steps
 
-1. Document endpoints and upload pipeline with verified ownership.
+1. Frontend document upload UI wired to these endpoints.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 

@@ -83,6 +83,15 @@ class Settings(BaseSettings):
         validation_alias="AUTH_JWKS_REQUEST_TIMEOUT_SECONDS",
     )
 
+    document_storage_root: str = Field(
+        default="var/document_storage",
+        validation_alias="DOCUMENT_STORAGE_ROOT",
+    )
+    document_max_upload_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        validation_alias="DOCUMENT_MAX_UPLOAD_BYTES",
+    )
+
     @field_validator("auth_jwks_url")
     @classmethod
     def _validate_auth_jwks_url(cls, value: str | None) -> str | None:
@@ -125,6 +134,13 @@ class Settings(BaseSettings):
             port=self.postgres_port,
             database=self.postgres_db,
         ).render_as_string(hide_password=False)
+
+    @property
+    def resolved_document_storage_root(self) -> Path:
+        path = Path(self.document_storage_root)
+        if not path.is_absolute():
+            path = _API_ROOT / path
+        return path
 
 
 @lru_cache

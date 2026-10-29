@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ai_knowledge_hub_api.models import DocumentStatus
+
 
 class HealthLiveResponse(BaseModel):
     service: str
@@ -37,5 +39,19 @@ class CollectionResponse(BaseModel):
 
     id: UUID
     name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    collection_id: UUID
+    original_filename: str
+    mime_type: str
+    size_bytes: int
+    status: DocumentStatus
+    content_hash_sha256: str | None
     created_at: datetime
     updated_at: datetime

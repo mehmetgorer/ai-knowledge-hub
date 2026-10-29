@@ -41,8 +41,8 @@ infra/postgres/data/
 docker/postgres/data/
 *.sql.dump
 
-# Python
-.venv/
+# Python local document uploads (development)
+services/api/var/
 venv/
 __pycache__/
 *.py[cod]

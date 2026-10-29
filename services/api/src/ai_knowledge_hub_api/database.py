@@ -38,3 +38,6 @@ def dispose_engine() -> None:
     from ai_knowledge_hub_api.db_session import reset_session_factory
 
     reset_session_factory()
+    from ai_knowledge_hub_api.storage.dependencies import clear_document_storage_cache
+
+    clear_document_storage_cache()
