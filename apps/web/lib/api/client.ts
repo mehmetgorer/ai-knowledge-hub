@@ -1,5 +1,10 @@
 import { getApiBaseUrl } from "@/lib/api/config";
 import { authClient } from "@/lib/auth/client";
+import {
+  parseAskResponse,
+  validateAskQuestionInput,
+  type AskResult,
+} from "@/lib/ask/parse-ask-response";
 import { formatDocumentStatus } from "@/lib/documents/format-document-status";
 import {
   parseSearchResponse,
@@ -11,6 +16,8 @@ import {
 export { formatDocumentStatus };
 export type { SearchMatch, SearchResult, SearchTopK } from "@/lib/search/parse-search-response";
 export { SEARCH_TOP_K_OPTIONS } from "@/lib/search/parse-search-response";
+export type { AskResult, AskSource } from "@/lib/ask/parse-ask-response";
+export { validateAskQuestionInput } from "@/lib/ask/parse-ask-response";
 
 export type CollectionRecord = {
   id: string;
@@ -454,6 +461,55 @@ export async function searchCollection(
   }
 
   return { ok: true, search: parsed.result };
+}
+
+export async function askCollection(
+  collectionId: string,
+  question: string,
+  topK: number = 5,
+): Promise<
+  | { ok: true; ask: AskResult }
+  | { ok: false; error: ApiClientError }
+> {
+  const questionError = validateAskQuestionInput(question);
+  if (questionError) {
+    return { ok: false, error: { message: questionError, status: 422 } };
+  }
+  if (!validateSearchTopK(topK)) {
+    return {
+      ok: false,
+      error: { message: "top_k must be 3, 5, or 10.", status: 422 },
+    };
+  }
+
+  const trimmedQuestion = question.trim();
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/ask`,
+    {
+      method: "POST",
+      body: JSON.stringify({ question: trimmedQuestion, top_k: topK }),
+    },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON after ask." },
+    };
+  }
+
+  const parsed = parseAskResponse(payload);
+  if (!parsed.ok) {
+    return { ok: false, error: { message: parsed.error } };
+  }
+
+  return { ok: true, ask: parsed.result };
 }
 
 export async function fetchDocuments(

@@ -8,6 +8,7 @@ import {
   authLabelClassName,
 } from "@/components/auth-shell";
 import {
+  askCollection,
   fetchCollections,
   fetchDocuments,
   formatDocumentStatus,
@@ -16,11 +17,21 @@ import {
   searchCollection,
   uploadDocument,
   validateDocumentFile,
+  type AskSource,
   type CollectionRecord,
   type DocumentRecord,
   type SearchMatch,
   SEARCH_TOP_K_OPTIONS,
 } from "@/lib/api/client";
+import {
+  askGroundingStatusLabel,
+  shouldDisableAskSubmit,
+  shouldDisplayAskState,
+} from "@/lib/ask/ask-ui-guards";
+import {
+  splitAnswerForDisplay,
+} from "@/lib/ask/ask-answer-display";
+import { validateAskQuestionInput } from "@/lib/ask/parse-ask-response";
 import { SearchRequestCoordinator } from "@/lib/search/search-request-lifecycle";
 import {
   formatCosineDistance,
@@ -83,6 +94,48 @@ type SearchViewState =
   | { kind: "empty"; collectionId: string; query: string }
   | { kind: "error"; collectionId: string; query: string; message: string };
 
+type AskViewState =
+  | { kind: "idle" }
+  | { kind: "loading"; collectionId: string }
+  | {
+      kind: "ready";
+      collectionId: string;
+      question: string;
+      answer: string;
+      sources: AskSource[];
+      model: string;
+      grounded: boolean;
+    }
+  | { kind: "error"; collectionId: string; question: string; message: string };
+
+function AskAnswerText(props: {
+  answer: string;
+  sources: readonly AskSource[];
+}) {
+  const knownSourceIds = new Set(props.sources.map((source) => source.source_id));
+  const parts = splitAnswerForDisplay(props.answer, knownSourceIds);
+  return (
+    <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">
+      {parts.map((part, index) =>
+        part.kind === "text" ? (
+          <span key={`t-${index}`}>{part.value}</span>
+        ) : (
+          <span
+            key={`c-${index}`}
+            className={
+              part.known
+                ? "font-semibold text-violet-800 dark:text-violet-300"
+                : "font-medium text-zinc-600 dark:text-zinc-400"
+            }
+          >
+            [{part.sourceId}]
+          </span>
+        ),
+      )}
+    </p>
+  );
+}
+
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -128,6 +181,8 @@ export function DocumentsPanel() {
   const fileFieldId = useId();
   const searchQueryFieldId = useId();
   const searchTopKFieldId = useId();
+  const askQuestionFieldId = useId();
+  const askTopKFieldId = useId();
 
   const [collectionsState, setCollectionsState] = useState<CollectionsLoadState>(
     { kind: "loading" },
@@ -135,6 +190,7 @@ export function DocumentsPanel() {
   const [selectedCollectionId, setSelectedCollectionId] = useState("");
   const documentsRequestIdRef = useRef(0);
   const searchCoordinatorRef = useRef(new SearchRequestCoordinator());
+  const askCoordinatorRef = useRef(new SearchRequestCoordinator());
   const processingDocumentIdsRef = useRef<Set<string>>(new Set());
   const selectedCollectionIdRef = useRef(selectedCollectionId);
 
@@ -161,6 +217,14 @@ export function DocumentsPanel() {
   const [searchState, setSearchState] = useState<SearchViewState>({
     kind: "idle",
   });
+  const [askQuestion, setAskQuestion] = useState("");
+  const askQuestionRef = useRef(askQuestion);
+  useEffect(() => {
+    askQuestionRef.current = askQuestion;
+  }, [askQuestion]);
+  const [submittedAskQuestion, setSubmittedAskQuestion] = useState("");
+  const [askTopK, setAskTopK] = useState<3 | 5 | 10>(5);
+  const [askState, setAskState] = useState<AskViewState>({ kind: "idle" });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -389,6 +453,75 @@ export function DocumentsPanel() {
     searchCoordinatorRef.current.invalidatePending();
   }, []);
 
+  const invalidatePendingAsk = useCallback(() => {
+    askCoordinatorRef.current.invalidatePending();
+  }, []);
+
+  const runCollectionAsk = useCallback(async () => {
+    const coordinator = askCoordinatorRef.current;
+    const collectionIdAtStart = selectedCollectionIdRef.current;
+    if (!collectionIdAtStart || coordinator.inFlight) {
+      return;
+    }
+
+    const questionError = validateAskQuestionInput(askQuestion);
+    if (questionError) {
+      setAskState({
+        kind: "error",
+        collectionId: collectionIdAtStart,
+        question: askQuestion.trim(),
+        message: questionError,
+      });
+      return;
+    }
+
+    const questionFingerprint = askQuestion.trim();
+    setSubmittedAskQuestion(questionFingerprint);
+    const requestId = coordinator.beginRequest();
+    setAskState({ kind: "loading", collectionId: collectionIdAtStart });
+
+    try {
+      const result = await askCollection(
+        collectionIdAtStart,
+        questionFingerprint,
+        askTopK,
+      );
+
+      if (
+        !coordinator.shouldApplyCompletion(requestId, {
+          selectedCollectionId: selectedCollectionIdRef.current,
+          collectionIdWhenSearchStarted: collectionIdAtStart,
+          currentQueryFingerprint: askQuestionRef.current.trim(),
+          queryFingerprintWhenSearchStarted: questionFingerprint,
+        })
+      ) {
+        return;
+      }
+
+      if (!result.ok) {
+        setAskState({
+          kind: "error",
+          collectionId: collectionIdAtStart,
+          question: questionFingerprint,
+          message: result.error.message,
+        });
+        return;
+      }
+
+      setAskState({
+        kind: "ready",
+        collectionId: collectionIdAtStart,
+        question: questionFingerprint,
+        answer: result.ask.answer,
+        sources: result.ask.sources,
+        model: result.ask.model,
+        grounded: result.ask.grounded,
+      });
+    } finally {
+      coordinator.endRequest(requestId);
+    }
+  }, [askQuestion, askTopK]);
+
   const runCollectionSearch = useCallback(async () => {
     const coordinator = searchCoordinatorRef.current;
     const collectionIdAtStart = selectedCollectionIdRef.current;
@@ -469,6 +602,15 @@ export function DocumentsPanel() {
     submittedQueryTrimmed: submittedSearchQuery,
   });
 
+  const showAskFeedback = shouldDisplayAskState({
+    askStateKind: askState.kind,
+    askCollectionId:
+      askState.kind === "idle" ? undefined : askState.collectionId,
+    selectedCollectionId,
+    currentQuestionTrimmed: askQuestion.trim(),
+    submittedQuestionTrimmed: submittedAskQuestion,
+  });
+
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isUploading || !selectedCollectionId || !selectedFile) {
@@ -525,8 +667,9 @@ export function DocumentsPanel() {
           <strong className="font-medium">Process</strong> extracts text and
           stores chunks; <strong className="font-medium">Index</strong> runs
           local embedding on processed chunks (first run may take longer while
-          the model initializes). Use semantic search below to find passages in
-          indexed (Ready) documents — not AI-generated answers.
+          the model initializes). Use semantic search to find passages, or Ask
+          AI for a grounded local answer with citations — not guaranteed
+          correct.
         </p>
       </div>
 
@@ -574,12 +717,16 @@ export function DocumentsPanel() {
                 disabled={isUploading}
                 onChange={(event) => {
                   invalidatePendingSearch();
+                  invalidatePendingAsk();
                   setSelectedCollectionId(event.target.value);
                   setProcessFeedbackByDocumentId({});
                   setIndexFeedbackByDocumentId({});
                   setSearchQuery("");
                   setSubmittedSearchQuery("");
                   setSearchState({ kind: "idle" });
+                  setAskQuestion("");
+                  setSubmittedAskQuestion("");
+                  setAskState({ kind: "idle" });
                   setSelectedFile(null);
                   setUploadError(null);
                   setUploadSuccess(null);
@@ -818,6 +965,181 @@ export function DocumentsPanel() {
                   </li>
                 ))}
               </ol>
+            ) : null}
+          </div>
+
+          <div className="space-y-3 rounded-md border border-violet-200 bg-violet-50/40 p-4 dark:border-violet-900/60 dark:bg-violet-950/20">
+            <div>
+              <h3 className="text-sm font-medium text-violet-950 dark:text-violet-100">
+                Ask AI
+              </h3>
+              <p className="mt-1 text-xs text-violet-900/80 dark:text-violet-200/80">
+                Generates a concise answer from indexed passages in the selected
+                collection using your local Ollama model. Cosine distance on
+                sources is retrieval rank only — not answer confidence.
+              </p>
+            </div>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runCollectionAsk();
+              }}
+            >
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor={askQuestionFieldId}
+                  className={authLabelClassName}
+                >
+                  Question
+                </label>
+                <textarea
+                  id={askQuestionFieldId}
+                  name="askQuestion"
+                  rows={3}
+                  value={askQuestion}
+                  disabled={askState.kind === "loading"}
+                  onChange={(event) => {
+                    if (
+                      askCoordinatorRef.current.inFlight ||
+                      askState.kind === "loading"
+                    ) {
+                      invalidatePendingAsk();
+                      setAskState({ kind: "idle" });
+                      setSubmittedAskQuestion("");
+                    }
+                    setAskQuestion(event.target.value);
+                  }}
+                  className={`${authFieldClassName} min-h-[4.5rem] resize-y`}
+                />
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+                  <label htmlFor={askTopKFieldId} className={authLabelClassName}>
+                    Context passages
+                  </label>
+                  <select
+                    id={askTopKFieldId}
+                    name="askTopK"
+                    value={askTopK}
+                    disabled={askState.kind === "loading"}
+                    onChange={(event) => {
+                      setAskTopK(Number(event.target.value) as 3 | 5 | 10);
+                    }}
+                    className={authFieldClassName}
+                  >
+                    {SEARCH_TOP_K_OPTIONS.map((value) => (
+                      <option key={value} value={value}>
+                        Top {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={shouldDisableAskSubmit({
+                    collectionSelected: Boolean(selectedCollectionId),
+                    questionValid: validateAskQuestionInput(askQuestion) === null,
+                    inFlight: askState.kind === "loading",
+                  })}
+                  className={`${authButtonClassName} w-full bg-violet-900 text-white hover:bg-violet-800 dark:bg-violet-700 dark:hover:bg-violet-600 sm:w-auto sm:min-w-[9rem]`}
+                  aria-busy={askState.kind === "loading"}
+                >
+                  {askState.kind === "loading" ? "Generating…" : "Ask"}
+                </button>
+              </div>
+            </form>
+
+            {askState.kind === "loading" &&
+            askState.collectionId === selectedCollectionId &&
+            showAskFeedback ? (
+              <p
+                className="text-sm text-violet-900/90 dark:text-violet-200"
+                role="status"
+              >
+                Generating answer from local model…
+              </p>
+            ) : null}
+
+            {askState.kind === "error" &&
+            askState.collectionId === selectedCollectionId &&
+            showAskFeedback ? (
+              <div className="space-y-2">
+                <p
+                  className="text-sm text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {askState.message}
+                </p>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-violet-950 underline-offset-4 hover:underline dark:text-violet-100"
+                  onClick={() => {
+                    void runCollectionAsk();
+                  }}
+                >
+                  Retry ask
+                </button>
+              </div>
+            ) : null}
+
+            {askState.kind === "ready" &&
+            askState.collectionId === selectedCollectionId &&
+            showAskFeedback ? (
+              <div className="space-y-3 rounded-md border border-violet-200/80 bg-white/60 p-3 dark:border-violet-800 dark:bg-zinc-950/40">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-wide text-violet-900/70 dark:text-violet-300/80">
+                    Answer
+                  </p>
+                  <AskAnswerText
+                    answer={askState.answer}
+                    sources={askState.sources}
+                  />
+                </div>
+                <dl className="grid gap-1 text-xs text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
+                  <div>
+                    <dt className="inline font-medium">Model: </dt>
+                    <dd className="inline">{askState.model}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-medium">Grounding: </dt>
+                    <dd className="inline">
+                      {askGroundingStatusLabel(askState.grounded)}
+                    </dd>
+                  </div>
+                </dl>
+                {askState.sources.length === 0 ? (
+                  <p
+                    className="text-sm text-zinc-600 dark:text-zinc-400"
+                    role="status"
+                  >
+                    No verified source passages were returned for this answer.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Sources
+                    </p>
+                    <ul className="space-y-2">
+                      {askState.sources.map((source) => (
+                        <li key={source.source_id}>
+                          <details className="rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+                            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                              [{source.source_id}] {source.original_filename} ·
+                              chunk {source.chunk_index} · pages{" "}
+                              {formatSearchPageNumbers(source.page_numbers)} ·
+                              distance {formatCosineDistance(source.cosine_distance)}
+                            </summary>
+                            <p className="border-t border-zinc-200 px-3 py-2 whitespace-pre-wrap text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+                              {source.text}
+                            </p>
+                          </details>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             ) : null}
           </div>
 

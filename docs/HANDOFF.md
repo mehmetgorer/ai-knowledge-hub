@@ -360,6 +360,13 @@ POST /collections/{collection_id}/ask
 
 **Local Ollama:** install [Ollama](https://ollama.com), run `ollama serve` (default **11434**), pull model e.g. `ollama pull qwen3:1.7b`. Real answer quality/citation behavior is **not verified in CI** (mocked LLM only).
 
+## Phase 4A.2 — Dashboard Ask AI (complete)
+
+- **`askCollection`** in **`apps/web/lib/api/client.ts`**: POST **`/collections/{id}/ask`**, strict **`parseAskResponse`**, handles **401/404/422/503**, network and malformed JSON.
+- **`DocumentsPanel`**: violet **Ask AI** block (shared collection selector), question textarea, top_k **3/5/10**, generating/error/retry, answer with inline **[Sx]** markers, model + grounding label (structural validation — not fact-checked), expandable sources with distance as rank only.
+- **`SearchRequestCoordinator`** (separate ref) + **`ask-ui-guards`** for stale collection/question races; no localStorage persistence.
+- Unit tests: **`lib/ask/*.test.ts`**; CI **`npm run test --workspace=web`**.
+
 ## Recommended next steps
 
 1. Dashboard Ask UI wired to **`POST .../ask`**.
