@@ -78,11 +78,14 @@ export function mapHttpStatusToMessage(status: number): string {
   if (status === 404) {
     return "Collection not found (404). It may have been removed or you lack access.";
   }
+  if (status === 409) {
+    return "This document cannot be processed right now (409). It may already be processing or ready for indexing.";
+  }
   if (status === 413) {
     return "File exceeds the maximum upload size (413). Limit is 10 MB.";
   }
   if (status === 422) {
-    return "Invalid collection name (422). Use a non-empty name up to 255 characters.";
+    return "The request could not be processed (422). Check input or document content.";
   }
   if (status === 503) {
     return "The API is unavailable (503). Check API auth configuration or database connectivity.";
@@ -284,10 +287,78 @@ export function validateDocumentFile(file: File): string | null {
 }
 
 export function formatDocumentStatus(status: string): string {
-  if (status === "UPLOADED") {
-    return "Uploaded";
+  switch (status) {
+    case "UPLOADED":
+      return "Uploaded";
+    case "PROCESSING":
+      return "Processing";
+    case "PROCESSED":
+      return "Processed";
+    case "READY":
+      return "Ready";
+    case "FAILED":
+      return "Failed";
+    default:
+      return status;
   }
-  return status;
+}
+
+const DOCUMENT_PROCESS_STATUSES = new Set([
+  "UPLOADED",
+  "PROCESSING",
+  "PROCESSED",
+  "READY",
+  "FAILED",
+]);
+
+export type DocumentProcessResult = {
+  id: string;
+  status: string;
+  chunk_count: number;
+};
+
+export async function processDocument(
+  collectionId: string,
+  documentId: string,
+): Promise<
+  | { ok: true; process: DocumentProcessResult }
+  | { ok: false; error: ApiClientError }
+> {
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(documentId)}/process`,
+    { method: "POST" },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON after processing." },
+    };
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof (payload as DocumentProcessResult).id !== "string" ||
+    typeof (payload as DocumentProcessResult).status !== "string" ||
+    typeof (payload as DocumentProcessResult).chunk_count !== "number" ||
+    !Number.isFinite((payload as DocumentProcessResult).chunk_count) ||
+    (payload as DocumentProcessResult).chunk_count < 0 ||
+    !DOCUMENT_PROCESS_STATUSES.has((payload as DocumentProcessResult).status)
+  ) {
+    return {
+      ok: false,
+      error: { message: "The API returned an unexpected process response." },
+    };
+  }
+
+  return { ok: true, process: payload as DocumentProcessResult };
 }
 
 export async function fetchDocuments(

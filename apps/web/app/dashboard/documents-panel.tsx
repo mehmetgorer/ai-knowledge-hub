@@ -11,6 +11,7 @@ import {
   fetchCollections,
   fetchDocuments,
   formatDocumentStatus,
+  processDocument,
   uploadDocument,
   validateDocumentFile,
   type CollectionRecord,
@@ -33,6 +34,25 @@ type DocumentsViewState =
   | { kind: "loading" }
   | { kind: "ready"; documents: DocumentRecord[] }
   | { kind: "error"; message: string };
+
+type DocumentProcessFeedback =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "success"; chunkCount: number }
+  | { kind: "error"; message: string };
+
+function processActionLabel(status: string): string | null {
+  switch (status) {
+    case "UPLOADED":
+      return "Process";
+    case "FAILED":
+      return "Retry";
+    case "PROCESSED":
+      return "Reprocess";
+    default:
+      return null;
+  }
+}
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -83,10 +103,19 @@ export function DocumentsPanel() {
   );
   const [selectedCollectionId, setSelectedCollectionId] = useState("");
   const documentsRequestIdRef = useRef(0);
+  const processingDocumentIdsRef = useRef<Set<string>>(new Set());
+  const selectedCollectionIdRef = useRef(selectedCollectionId);
+
+  useEffect(() => {
+    selectedCollectionIdRef.current = selectedCollectionId;
+  }, [selectedCollectionId]);
 
   const [documentsState, setDocumentsState] = useState<DocumentsLoadState>({
     kind: "idle",
   });
+  const [processFeedbackByDocumentId, setProcessFeedbackByDocumentId] = useState<
+    Record<string, DocumentProcessFeedback>
+  >({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -180,6 +209,55 @@ export function DocumentsPanel() {
     void runDocumentsFetch(selectedCollectionId, requestId);
   }, [selectedCollectionId, runDocumentsFetch]);
 
+  const runProcessDocument = useCallback(
+    async (documentId: string) => {
+      const collectionIdAtStart = selectedCollectionIdRef.current;
+      if (!collectionIdAtStart) {
+        return;
+      }
+      processingDocumentIdsRef.current.add(documentId);
+      setProcessFeedbackByDocumentId((current) => ({
+        ...current,
+        [documentId]: { kind: "loading" },
+      }));
+
+      const result = await processDocument(collectionIdAtStart, documentId);
+      processingDocumentIdsRef.current.delete(documentId);
+
+      const requestId = ++documentsRequestIdRef.current;
+      await runDocumentsFetch(collectionIdAtStart, requestId);
+
+      if (selectedCollectionIdRef.current !== collectionIdAtStart) {
+        setProcessFeedbackByDocumentId((current) => {
+          if (!(documentId in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[documentId];
+          return next;
+        });
+        return;
+      }
+
+      if (!result.ok) {
+        setProcessFeedbackByDocumentId((current) => ({
+          ...current,
+          [documentId]: { kind: "error", message: result.error.message },
+        }));
+        return;
+      }
+
+      setProcessFeedbackByDocumentId((current) => ({
+        ...current,
+        [documentId]: {
+          kind: "success",
+          chunkCount: result.process.chunk_count,
+        },
+      }));
+    },
+    [runDocumentsFetch],
+  );
+
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isUploading || !selectedCollectionId || !selectedFile) {
@@ -232,8 +310,10 @@ export function DocumentsPanel() {
           Documents
         </h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Upload PDF, TXT, or MD files (max 10 MB) into a collection. Status
-          &quot;Uploaded&quot; means stored only — not processed for search yet.
+          Upload PDF, TXT, or MD files (max 10 MB) into a collection. Use
+          Process to extract text and create chunks on demand. &quot;Processed&quot;
+          means chunks are stored — not yet indexed for semantic search.
+          &quot;Ready&quot; is reserved for future indexing.
         </p>
       </div>
 
@@ -281,6 +361,7 @@ export function DocumentsPanel() {
                 disabled={isUploading}
                 onChange={(event) => {
                   setSelectedCollectionId(event.target.value);
+                  setProcessFeedbackByDocumentId({});
                   setSelectedFile(null);
                   setUploadError(null);
                   setUploadSuccess(null);
@@ -419,10 +500,23 @@ export function DocumentsPanel() {
                       <th scope="col" className="px-4 py-2 font-medium">
                         Uploaded
                       </th>
+                      <th scope="col" className="px-4 py-2 font-medium">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {documentsView.documents.map((document) => (
+                    {documentsView.documents.map((document) => {
+                      const actionLabel = processActionLabel(document.status);
+                      const feedback =
+                        processFeedbackByDocumentId[document.id] ?? {
+                          kind: "idle" as const,
+                        };
+                      const isProcessingRow =
+                        document.status === "PROCESSING" ||
+                        feedback.kind === "loading";
+
+                      return (
                       <tr key={document.id}>
                         <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                           {document.original_filename}
@@ -432,12 +526,69 @@ export function DocumentsPanel() {
                         </td>
                         <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                           {formatDocumentStatus(document.status)}
+                          {document.status === "PROCESSED" ? (
+                            <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-500">
+                              Chunks stored; not indexed yet
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                           {formatTimestamp(document.created_at)}
                         </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex min-w-[8rem] flex-col gap-1.5">
+                            {actionLabel ? (
+                              <button
+                                type="button"
+                                className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                                disabled={
+                                  isProcessingRow ||
+                                  documentsView.kind !== "ready"
+                                }
+                                aria-busy={feedback.kind === "loading"}
+                                onClick={() => {
+                                  void runProcessDocument(document.id);
+                                }}
+                              >
+                                {feedback.kind === "loading"
+                                  ? "Working…"
+                                  : actionLabel}
+                              </button>
+                            ) : document.status === "PROCESSING" ? (
+                              <span
+                                className="text-xs text-zinc-600 dark:text-zinc-400"
+                                role="status"
+                              >
+                                Processing…
+                              </span>
+                            ) : document.status === "READY" ? (
+                              <span className="text-xs text-zinc-500 dark:text-zinc-500">
+                                Indexed (reprocess unavailable)
+                              </span>
+                            ) : null}
+                            {feedback.kind === "success" ? (
+                              <p
+                                className="text-xs text-green-700 dark:text-green-400"
+                                role="status"
+                              >
+                                {feedback.chunkCount} chunk
+                                {feedback.chunkCount === 1 ? "" : "s"} from
+                                latest run
+                              </p>
+                            ) : null}
+                            {feedback.kind === "error" ? (
+                              <p
+                                className="text-xs text-red-600 dark:text-red-400"
+                                role="alert"
+                              >
+                                {feedback.message}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

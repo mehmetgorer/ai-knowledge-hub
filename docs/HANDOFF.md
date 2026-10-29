@@ -229,6 +229,11 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Claim commit no longer followed by `refresh()`; document fields copied to an immutable snapshot before extract/chunk so **no SQLAlchemy transaction stays open** during storage read, PDF extraction or chunking.
 - Failed claim rolls back before conflict handling; success/failure persistence behavior unchanged.
 
+## Phase 2D.3c.3 — Document processing UI (complete)
+
+- Dashboard **Documents** panel: per-status actions (Process / Retry / Reprocess), processing state display, per-row feedback with **chunk count from the latest process response only** (not from GET documents).
+- **`processDocument`** in `apps/web/lib/api/client.ts` — authenticated POST with response validation and 401/404/409/422/network handling.
+
 ### Usage (library)
 
 ```python
