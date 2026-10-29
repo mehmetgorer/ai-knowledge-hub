@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/documents/processing-ui-guards.test.ts lib/documents/document-ui-actions.test.ts lib/search/parse-search-response.test.ts lib/search/search-ui-guards.test.ts"
+    "test": "node --experimental-strip-types --test lib/documents/processing-ui-guards.test.ts lib/documents/document-ui-actions.test.ts lib/search/parse-search-response.test.ts lib/search/search-ui-guards.test.ts lib/search/search-request-lifecycle.test.ts"
   },
   "dependencies": {
     "@neondatabase/auth": "^0.7.0-beta",

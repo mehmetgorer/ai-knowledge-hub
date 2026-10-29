@@ -21,10 +21,10 @@ import {
   type SearchMatch,
   SEARCH_TOP_K_OPTIONS,
 } from "@/lib/api/client";
+import { SearchRequestCoordinator } from "@/lib/search/search-request-lifecycle";
 import {
   formatCosineDistance,
   formatSearchPageNumbers,
-  shouldApplySearchResults,
   shouldDisableSearchSubmit,
   shouldDisplaySearchState,
 } from "@/lib/search/search-ui-guards";
@@ -134,8 +134,7 @@ export function DocumentsPanel() {
   );
   const [selectedCollectionId, setSelectedCollectionId] = useState("");
   const documentsRequestIdRef = useRef(0);
-  const searchRequestIdRef = useRef(0);
-  const searchInFlightRef = useRef(false);
+  const searchCoordinatorRef = useRef(new SearchRequestCoordinator());
   const processingDocumentIdsRef = useRef<Set<string>>(new Set());
   const selectedCollectionIdRef = useRef(selectedCollectionId);
 
@@ -153,6 +152,10 @@ export function DocumentsPanel() {
     Record<string, DocumentIndexFeedback>
   >({});
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryRef = useRef(searchQuery);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
   const [searchTopK, setSearchTopK] = useState<3 | 5 | 10>(5);
   const [searchState, setSearchState] = useState<SearchViewState>({
@@ -382,9 +385,14 @@ export function DocumentsPanel() {
     [runDocumentsFetch],
   );
 
+  const invalidatePendingSearch = useCallback(() => {
+    searchCoordinatorRef.current.invalidatePending();
+  }, []);
+
   const runCollectionSearch = useCallback(async () => {
+    const coordinator = searchCoordinatorRef.current;
     const collectionIdAtStart = selectedCollectionIdRef.current;
-    if (!collectionIdAtStart || searchInFlightRef.current) {
+    if (!collectionIdAtStart || coordinator.inFlight) {
       return;
     }
 
@@ -401,8 +409,7 @@ export function DocumentsPanel() {
 
     const queryFingerprint = searchQuery.trim();
     setSubmittedSearchQuery(queryFingerprint);
-    searchInFlightRef.current = true;
-    const requestId = ++searchRequestIdRef.current;
+    const requestId = coordinator.beginRequest();
     setSearchState({ kind: "loading", collectionId: collectionIdAtStart });
 
     try {
@@ -413,12 +420,10 @@ export function DocumentsPanel() {
       );
 
       if (
-        !shouldApplySearchResults({
-          completedRequestId: requestId,
-          activeRequestId: searchRequestIdRef.current,
+        !coordinator.shouldApplyCompletion(requestId, {
           selectedCollectionId: selectedCollectionIdRef.current,
           collectionIdWhenSearchStarted: collectionIdAtStart,
-          currentQueryFingerprint: queryFingerprint,
+          currentQueryFingerprint: searchQueryRef.current.trim(),
           queryFingerprintWhenSearchStarted: queryFingerprint,
         })
       ) {
@@ -451,7 +456,7 @@ export function DocumentsPanel() {
         matches: result.search.matches,
       });
     } finally {
-      searchInFlightRef.current = false;
+      coordinator.endRequest(requestId);
     }
   }, [searchQuery, searchTopK]);
 
@@ -568,6 +573,7 @@ export function DocumentsPanel() {
                 value={selectedCollectionId}
                 disabled={isUploading}
                 onChange={(event) => {
+                  invalidatePendingSearch();
                   setSelectedCollectionId(event.target.value);
                   setProcessFeedbackByDocumentId({});
                   setIndexFeedbackByDocumentId({});
@@ -679,6 +685,14 @@ export function DocumentsPanel() {
                   value={searchQuery}
                   disabled={searchState.kind === "loading"}
                   onChange={(event) => {
+                    if (
+                      searchCoordinatorRef.current.inFlight ||
+                      searchState.kind === "loading"
+                    ) {
+                      invalidatePendingSearch();
+                      setSearchState({ kind: "idle" });
+                      setSubmittedSearchQuery("");
+                    }
                     setSearchQuery(event.target.value);
                   }}
                   className={authFieldClassName}
