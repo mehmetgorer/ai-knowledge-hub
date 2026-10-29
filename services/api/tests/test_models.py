@@ -30,6 +30,23 @@ def test_document_table_columns_and_status_enum() -> None:
     }
 
 
+def test_document_chunk_table_columns() -> None:
+    from ai_knowledge_hub_api.models import DocumentChunk
+
+    mapper = inspect(DocumentChunk)
+    column_names = {column.key for column in mapper.columns}
+    assert column_names == {
+        "id",
+        "document_id",
+        "chunk_index",
+        "text",
+        "source_kind",
+        "page_numbers",
+        "character_count",
+        "created_at",
+    }
+
+
 def test_collection_document_relationship() -> None:
     collection = Collection(
         owner_subject="user|verified-subject",

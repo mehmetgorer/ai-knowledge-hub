@@ -211,6 +211,12 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Overlap prefix is kept separate from the unit buffer so target/max flush never emits overlap-only duplicate chunks.
 - Regression tests: fence preservation, impossible fence config, overlap-only flush scenarios.
 
+## Phase 2D.3c.1 — Chunk persistence (complete)
+
+- **`document_chunks`** table (Alembic `0003_document_chunks`): UUID PK, FK to `documents` ON DELETE CASCADE, `chunk_index`, `text`, `source_kind`, `page_numbers` (integer array), `character_count`, `created_at`; UNIQUE `(document_id, chunk_index)` and index on `document_id`.
+- **`DocumentChunk`** SQLAlchemy model; **`replace_document_chunks`** / **`load_document_chunks`** accept `TextChunk` results; caller owns commit/rollback (delete-all-then-insert in one transaction — rollback restores prior rows).
+- No new API fields or automatic processing; `Document.status` unchanged.
+
 ### Usage (library)
 
 ```python
@@ -219,6 +225,14 @@ from ai_knowledge_hub_api.documents.chunking import chunk_extraction_result
 
 extraction = extract_document_text(data, filename="notes.md")
 chunks = chunk_extraction_result(extraction)
+```
+
+```python
+from ai_knowledge_hub_api.documents.chunks import load_document_chunks, replace_document_chunks
+
+replace_document_chunks(session, document_id=document.id, chunks=result.chunks)
+session.commit()
+stored = load_document_chunks(session, document.id)
 ```
 
 ## Recommended next steps

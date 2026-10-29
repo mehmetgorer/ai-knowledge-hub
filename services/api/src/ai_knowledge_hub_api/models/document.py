@@ -19,6 +19,7 @@ from ai_knowledge_hub_api.models.base import Base
 
 if TYPE_CHECKING:
     from ai_knowledge_hub_api.models.collection import Collection
+    from ai_knowledge_hub_api.models.document_chunk import DocumentChunk
 
 
 class DocumentStatus(enum.StrEnum):
@@ -73,3 +74,8 @@ class Document(Base):
     )
 
     collection: Mapped["Collection"] = relationship(back_populates="documents")
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="DocumentChunk.chunk_index",
+    )
