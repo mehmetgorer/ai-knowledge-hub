@@ -205,6 +205,12 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - **`segments.py`**: fenced-code splits enforce part lengths; tiny `max_characters`, long lines, and oversized fence openers handled with explicit fallbacks.
 - Regression tests: max-sized units with overlap, overlap overflow, fenced code at small limits, source coverage, deterministic output.
 
+## Phase 2D.3b.2 — Chunk content integrity (complete)
+
+- Fenced Markdown splits no longer fall back to body-only hard splits; impossible `max_characters` raises **`ChunkingConfigurationError`** instead of dropping fence/language metadata.
+- Overlap prefix is kept separate from the unit buffer so target/max flush never emits overlap-only duplicate chunks.
+- Regression tests: fence preservation, impossible fence config, overlap-only flush scenarios.
+
 ### Usage (library)
 
 ```python

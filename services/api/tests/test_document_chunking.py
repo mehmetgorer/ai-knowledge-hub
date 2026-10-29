@@ -227,10 +227,80 @@ def test_oversized_fenced_code_block_with_small_max() -> None:
 def test_split_oversized_code_with_long_fence_opener() -> None:
     opener = "```" + ("language-tag-" * 8)
     block = f"{opener}\nline-one\nline-two\n```"
-    parts = split_oversized_unit(block, max_characters=30)
+    with pytest.raises(ChunkingConfigurationError):
+        split_oversized_unit(block, max_characters=30)
+
+    parts = split_oversized_unit(block, max_characters=120)
     assert parts
     for part in parts:
-        assert len(part) <= 30
+        assert len(part) <= 120
+        assert part.startswith("```")
+        assert part.rstrip().endswith("```")
+        assert opener in part
+
+
+def test_fenced_split_rejects_impossible_max_without_dropping_fences() -> None:
+    block = "```python\nprint('hi')\n```"
+    with pytest.raises(ChunkingConfigurationError):
+        split_oversized_unit(block, max_characters=8)
+
+
+def test_fenced_split_parts_retain_language_opener() -> None:
+    long_body = "x = 1\n" + ("y = 2 + 3\n" * 6)
+    block = f"```typescript\n{long_body}```"
+    parts = split_oversized_unit(block, max_characters=55)
+    combined = "".join(parts)
+    assert "```typescript" in combined
+    assert "x = 1" in combined
+    assert "y = 2 + 3" in combined
+    for part in parts:
+        assert "```typescript" in part
+        assert part.rstrip().endswith("```")
+
+
+def test_no_overlap_only_chunk_on_target_flush() -> None:
+    filler = "Intro sentence with enough characters here."
+    tail_units = "\n\n".join(
+        f"Segment {index} has unique payload." for index in range(6)
+    )
+    text = f"{filler}\n\n{tail_units}"
+    extraction = _extraction_from_text(text)
+    config = ChunkingConfig(
+        target_characters=55,
+        max_characters=120,
+        overlap_characters=20,
+    )
+    result = chunk_extraction_result(extraction, config=config)
+    _assert_chunks_respect_limit(result, config)
+    for index in range(1, len(result.chunks)):
+        previous = result.chunks[index - 1].text
+        current = result.chunks[index].text
+        assert current != previous[-config.overlap_characters :]
+        assert not (
+            len(current) <= config.overlap_characters
+            and current in previous
+            and current.strip() == current
+        )
+
+
+def test_chunk_text_never_equals_only_prior_overlap_suffix() -> None:
+    paragraphs = [f"Block {index}: " + ("word " * 12) for index in range(8)]
+    text = "\n\n".join(paragraphs)
+    extraction = _extraction_from_text(text)
+    config = ChunkingConfig(
+        target_characters=45,
+        max_characters=90,
+        overlap_characters=18,
+    )
+    result = chunk_extraction_result(extraction, config=config)
+    _assert_chunks_respect_limit(result, config)
+    for index, chunk in enumerate(result.chunks):
+        if index == 0:
+            continue
+        prior = result.chunks[index - 1].text
+        overlap_tail = prior[-config.overlap_characters :]
+        assert chunk.text != overlap_tail.strip()
+        assert chunk.text != overlap_tail
 
 
 def test_all_chunks_respect_hard_limit_across_existing_scenarios() -> None:

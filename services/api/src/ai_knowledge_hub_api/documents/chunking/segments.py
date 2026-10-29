@@ -1,5 +1,7 @@
 import re
 
+from ai_knowledge_hub_api.documents.chunking.errors import ChunkingConfigurationError
+
 _FENCED_CODE_BLOCK = re.compile(
     r"(^```[^\n]*\n.*?^```\s*$|^~~~[^\n]*\n.*?^~~~\s*$)",
     re.MULTILINE | re.DOTALL,
@@ -100,6 +102,14 @@ def _fence_shell_length(opener: str, closer: str) -> int:
     return len(opener) + 1 + len(closer)
 
 
+def _fenced_code_cannot_fit(max_characters: int, opener: str, closer: str) -> None:
+    shell_len = _fence_shell_length(opener, closer)
+    raise ChunkingConfigurationError(
+        "max_characters is too small to preserve Markdown fenced code "
+        f"(fence shell requires at least {shell_len} characters)"
+    )
+
+
 def _split_code_block(block: str, *, max_characters: int) -> list[str]:
     lines = block.split("\n")
     if not lines:
@@ -109,18 +119,17 @@ def _split_code_block(block: str, *, max_characters: int) -> list[str]:
     has_closing_fence = lines[-1].strip().startswith(("```", "~~~"))
     closer = lines[-1] if has_closing_fence else "```"
     body_lines = lines[1:-1] if has_closing_fence else lines[1:]
-    body_text = "\n".join(body_lines)
 
     shell = _fence_shell_length(opener, closer)
     if shell > max_characters or max_characters < 4:
-        return _hard_split(body_text or block, max_characters=max_characters)
+        _fenced_code_cannot_fit(max_characters, opener, closer)
 
     inner_limit = max_characters - shell - 1
     if inner_limit < 1:
-        return _hard_split(body_text or block, max_characters=max_characters)
+        _fenced_code_cannot_fit(max_characters, opener, closer)
 
     if len(opener) + 1 + len(closer) > max_characters:
-        return _hard_split(body_text or block, max_characters=max_characters)
+        _fenced_code_cannot_fit(max_characters, opener, closer)
 
     chunks: list[str] = []
     current_body: list[str] = []
@@ -141,8 +150,7 @@ def _split_code_block(block: str, *, max_characters: int) -> list[str]:
             for piece in _hard_split(line, max_characters=inner_limit):
                 wrapped = "\n".join([opener, piece, closer])
                 if len(wrapped) > max_characters:
-                    chunks.extend(_hard_split(body_text, max_characters=max_characters))
-                    return [part for part in chunks if part.strip()]
+                    _fenced_code_cannot_fit(max_characters, opener, closer)
                 chunks.append(wrapped)
             continue
 
@@ -166,7 +174,7 @@ def _split_code_block(block: str, *, max_characters: int) -> list[str]:
         minimal = "\n".join([opener, closer])
         if len(minimal) <= max_characters:
             return [minimal]
-        return _hard_split(body_text or block, max_characters=max_characters)
+        _fenced_code_cannot_fit(max_characters, opener, closer)
 
     return _enforce_part_lengths(chunks, max_characters=max_characters)
 

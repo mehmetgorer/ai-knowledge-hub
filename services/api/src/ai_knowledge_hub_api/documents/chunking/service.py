@@ -109,18 +109,18 @@ def _trim_overlap_for_unit(
     return overlap_prefix[-max_overlap_len:]
 
 
-def _begin_next_buffer(
+def _carry_after_flush(
     overlap_prefix: str,
     unit: str,
     *,
     max_characters: int,
-) -> list[str]:
+) -> tuple[str, list[str]]:
     if not overlap_prefix:
-        return [unit]
+        return "", [unit]
 
     combined = _compose_chunk_text([overlap_prefix, unit])
     if len(combined) <= max_characters:
-        return [overlap_prefix, unit]
+        return overlap_prefix, [unit]
 
     reduced = _trim_overlap_for_unit(
         overlap_prefix,
@@ -130,8 +130,8 @@ def _begin_next_buffer(
     if reduced:
         combined = _compose_chunk_text([reduced, unit])
         if len(combined) <= max_characters:
-            return [reduced, unit]
-    return [unit]
+            return reduced, [unit]
+    return "", [unit]
 
 
 def _chunk_page_text(
@@ -154,17 +154,32 @@ def _chunk_page_text(
     if not expanded:
         return next_index
 
-    buffer_parts: list[str] = []
-    pending_overlap = ""
+    lead_overlap = ""
+    buffer_units: list[str] = []
 
-    def append_chunk(parts: list[str]) -> str:
+    def chunk_parts(units: list[str]) -> list[str]:
+        if lead_overlap:
+            return [lead_overlap, *units]
+        return units
+
+    def buffer_text() -> str:
+        return _compose_chunk_text(chunk_parts(buffer_units))
+
+    def append_chunk(units: list[str]) -> str:
         nonlocal next_index
+        if not units:
+            return lead_overlap
+        parts = chunk_parts(units)
         chunk_text = _compose_chunk_text(parts)
         if not chunk_text:
-            return ""
+            return lead_overlap
         if len(chunk_text) > config.max_characters:
             raise ChunkingConfigurationError(
                 "Internal chunking error: chunk exceeds max_characters"
+            )
+        if chunks and chunk_text == chunks[-1].text:
+            raise ChunkingConfigurationError(
+                "Internal chunking error: overlap-only duplicate chunk"
             )
         if len(chunks) >= config.max_chunks:
             raise ChunkingLimitExceededError(
@@ -183,19 +198,20 @@ def _chunk_page_text(
         return _overlap_suffix(chunk_text, config.overlap_characters)
 
     def enforce_max_on_buffer() -> None:
-        nonlocal buffer_parts, pending_overlap
-        while buffer_parts:
-            text = _compose_chunk_text(buffer_parts)
+        nonlocal lead_overlap, buffer_units
+        while buffer_units:
+            text = buffer_text()
             if len(text) <= config.max_characters:
                 return
-            if len(buffer_parts) == 1:
+            if len(buffer_units) == 1:
                 raise ChunkingConfigurationError(
                     "A single unit exceeds max_characters even after splitting"
                 )
-            pending_overlap = append_chunk(buffer_parts[:-1])
-            buffer_parts = _begin_next_buffer(
-                pending_overlap,
-                buffer_parts[-1],
+            new_overlap = append_chunk(buffer_units[:-1])
+            last_unit = buffer_units[-1]
+            lead_overlap, buffer_units = _carry_after_flush(
+                new_overlap,
+                last_unit,
                 max_characters=config.max_characters,
             )
 
@@ -205,43 +221,42 @@ def _chunk_page_text(
                 "A single unit exceeds max_characters even after splitting"
             )
 
-        if pending_overlap and not buffer_parts:
-            buffer_parts = _begin_next_buffer(
-                pending_overlap,
+        if lead_overlap and not buffer_units:
+            lead_overlap, buffer_units = _carry_after_flush(
+                lead_overlap,
                 unit,
                 max_characters=config.max_characters,
             )
-            pending_overlap = ""
-        elif not buffer_parts:
-            buffer_parts = [unit]
+        elif not buffer_units:
+            buffer_units = [unit]
         else:
-            trial_parts = buffer_parts + [unit]
-            trial_text = _compose_chunk_text(trial_parts)
+            trial_units = buffer_units + [unit]
+            trial_text = _compose_chunk_text(chunk_parts(trial_units))
             if len(trial_text) <= config.max_characters:
-                buffer_parts = trial_parts
+                buffer_units = trial_units
             else:
-                pending_overlap = append_chunk(buffer_parts)
-                buffer_parts = _begin_next_buffer(
-                    pending_overlap,
+                new_overlap = append_chunk(buffer_units)
+                lead_overlap, buffer_units = _carry_after_flush(
+                    new_overlap,
                     unit,
                     max_characters=config.max_characters,
                 )
-                pending_overlap = ""
 
         enforce_max_on_buffer()
 
-        buffer_text = _compose_chunk_text(buffer_parts)
-        if len(buffer_text) > config.target_characters and len(buffer_parts) > 1:
-            pending_overlap = append_chunk(buffer_parts[:-1])
-            buffer_parts = _begin_next_buffer(
-                pending_overlap,
-                buffer_parts[-1],
+        text = buffer_text()
+        if len(text) > config.target_characters and len(buffer_units) > 1:
+            new_overlap = append_chunk(buffer_units[:-1])
+            last_unit = buffer_units[-1]
+            lead_overlap, buffer_units = _carry_after_flush(
+                new_overlap,
+                last_unit,
                 max_characters=config.max_characters,
             )
             enforce_max_on_buffer()
 
-    if buffer_parts:
-        append_chunk(buffer_parts)
+    if buffer_units:
+        append_chunk(buffer_units)
 
     return next_index
 
