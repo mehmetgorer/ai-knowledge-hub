@@ -15,6 +15,7 @@ dependencies = [
     "pyjwt[crypto]>=2.15.1",
     "pypdf>=6.21.4",
     "python-multipart>=0.0.20",
+    "sentence-transformers>=6.2.0",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -37,8 +38,9 @@ dev = [
 testpaths = ["tests"]
 markers = [
     "integration: requires a running PostgreSQL instance (Docker Compose)",
+    "embedding_smoke: downloads real Sentence Transformers model weights",
 ]
-addopts = ["--strict-markers", "-m", "not integration"]
+addopts = ["--strict-markers", "-m", "not integration and not embedding_smoke"]
 
 [tool.ruff]
 line-length = 88

@@ -240,6 +240,21 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Synchronous **`tryAcquireProcessLock`** / **`finally` release** prevents duplicate process requests and leaked in-flight IDs.
 - Stale process feedback is dropped when the user switched collections before completion.
 
+## Phase 3A.1 — Local embedding service (complete)
+
+- **`ai_knowledge_hub_api.embeddings`** — lazy CPU **`intfloat/multilingual-e5-small`** (384-d, L2-normalized) via Sentence Transformers.
+- **`embed_document_chunks`** (`passage: ` prefix, batched) and **`embed_search_query`** (`query: ` prefix).
+- Token limit **512** enforced before inference; oversized character-based chunks raise **`EmbeddingInputTooLongError`** (no silent truncation).
+- First run downloads model weights from Hugging Face (~470 MB+ with PyTorch stack); plan for CPU RAM and disk.
+- Optional smoke: `RUN_EMBEDDING_SMOKE=1 uv run pytest -m embedding_smoke` (not in default CI).
+
+```python
+from ai_knowledge_hub_api.embeddings import embed_document_chunks, embed_search_query
+
+vectors = embed_document_chunks(["Chunk text…"])
+query_vector = embed_search_query("Arama sorgusu")
+```
+
 ### Usage (library)
 
 ```python
