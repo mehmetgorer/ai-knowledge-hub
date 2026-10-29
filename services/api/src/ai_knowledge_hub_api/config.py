@@ -92,6 +92,41 @@ class Settings(BaseSettings):
         validation_alias="DOCUMENT_MAX_UPLOAD_BYTES",
     )
 
+    ollama_base_url: str = Field(
+        default="http://127.0.0.1:11434",
+        validation_alias="OLLAMA_BASE_URL",
+    )
+    ollama_model: str = Field(
+        default="qwen3:1.7b",
+        validation_alias="OLLAMA_MODEL",
+    )
+    ollama_request_timeout_seconds: float = Field(
+        default=120.0,
+        validation_alias="OLLAMA_REQUEST_TIMEOUT_SECONDS",
+    )
+    rag_max_evidence_passages: int = Field(
+        default=5,
+        validation_alias="RAG_MAX_EVIDENCE_PASSAGES",
+    )
+    rag_max_evidence_characters: int = Field(
+        default=12_000,
+        validation_alias="RAG_MAX_EVIDENCE_CHARACTERS",
+    )
+    rag_max_output_tokens: int = Field(
+        default=512,
+        validation_alias="RAG_MAX_OUTPUT_TOKENS",
+    )
+
+    @field_validator("ollama_base_url")
+    @classmethod
+    def _validate_ollama_base_url(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("OLLAMA_BASE_URL must not be empty")
+        if not stripped.startswith(("http://", "https://")):
+            raise ValueError("OLLAMA_BASE_URL must be an http(s) URL")
+        return stripped.rstrip("/")
+
     @field_validator("auth_jwks_url")
     @classmethod
     def _validate_auth_jwks_url(cls, value: str | None) -> str | None:

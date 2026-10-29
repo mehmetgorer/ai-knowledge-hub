@@ -95,3 +95,33 @@ class CollectionSearchMatchResponse(BaseModel):
 
 class CollectionSearchResponse(BaseModel):
     matches: list[CollectionSearchMatchResponse]
+
+
+class CollectionAskRequest(BaseModel):
+    question: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("question")
+    @classmethod
+    def question_must_be_non_empty_after_strip(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("question must not be empty")
+        return stripped
+
+
+class CollectionAskSourceResponse(BaseModel):
+    source_id: str
+    document_id: UUID
+    original_filename: str
+    chunk_index: int
+    page_numbers: list[int]
+    text: str
+    cosine_distance: float
+
+
+class CollectionAskResponse(BaseModel):
+    answer: str
+    sources: list[CollectionAskSourceResponse]
+    model: str
+    grounded: bool

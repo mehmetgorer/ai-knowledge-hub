@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 89 passed, 11 deselected
-uv run pytest -m integration     # integration: 11 passed, 89 deselected
+uv run pytest                    # unit: 137 passed, 77 deselected
+uv run pytest -m integration     # integration: 76 passed, 138 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -337,11 +337,32 @@ POST /collections/{collection_id}/search
 
 - **`searchCollection`** in **`apps/web/lib/api/client.ts`**: POST search with **`query`** / **`top_k`** validation and strict **`matches`** parsing.
 - **`DocumentsPanel`**: semantic search section (shared collection selector), top_k **3/5/10**, loading/error/empty states, passage results with metadata; **`search-ui-guards`** for stale collection/query/request races.
-- Unit tests: **`lib/search/parse-search-response.test.ts`**, **`lib/search/search-ui-guards.test.ts`**; CI runs **`npm run test --workspace=web`**.
+- Unit tests: **`lib/search/parse-search-response.test.ts`**, **`lib/search/search-ui-guards.test.ts`**, **`lib/search/search-request-lifecycle.test.ts`**; CI runs **`npm run test --workspace=web`**.
+
+## Phase 3B.2a — Search race guard fix (complete)
+
+- **`SearchRequestCoordinator`** + **`invalidatePendingSearch()`** on collection/query change; completion compares live query via **`searchQueryRef`**; **`endRequest`** only clears in-flight for the active request id.
+- Regression: **`lib/search/search-request-lifecycle.test.ts`**.
+
+## Phase 4A.1 — Local grounded RAG backend (complete)
+
+- **`POST /collections/{collection_id}/ask`** (JWT): `{ "question", "top_k?" }` → `{ "answer", "sources", "model", "grounded" }`.
+- Pipeline (**`ai_knowledge_hub_api.rag`**): validate → ownership → **`semantic_search_collection`** (unchanged ranking) → bounded evidence **S1…Sn** → **`db.commit()`** before Ollama → JSON **`/api/chat`** via **`httpx`** → strict citation validation.
+- **Ollama** (server-side only): **`OLLAMA_BASE_URL`**, **`OLLAMA_MODEL`** (default **`qwen3:1.7b`**), **`OLLAMA_REQUEST_TIMEOUT_SECONDS`**, **`RAG_MAX_EVIDENCE_*`**, **`RAG_MAX_OUTPUT_TOKENS`**. No paid/cloud inference; prompts and document text are not logged.
+- **`grounded: true`** only when cited **Sx** ids match retrieved evidence and appear in the answer; invalid citations → **422**; insufficient evidence → **`grounded: false`** (empty sources); no chunks → safe message without LLM.
+- Errors: **503** Ollama offline/timeout/missing model; **422** grounding/validation; retrieval errors same as search.
+- Tests: **`test_ask.py`**, **`test_rag_*.py`**, **`test_ask_integration.py`** (mocked Ollama; no model download in CI).
+
+```http
+POST /collections/{collection_id}/ask
+{ "question": "What does SQL JOIN do?", "top_k": 5 }
+```
+
+**Local Ollama:** install [Ollama](https://ollama.com), run `ollama serve` (default **11434**), pull model e.g. `ollama pull qwen3:1.7b`. Real answer quality/citation behavior is **not verified in CI** (mocked LLM only).
 
 ## Recommended next steps
 
-1. Document parsing / chunking pipeline after upload.
+1. Dashboard Ask UI wired to **`POST .../ask`**.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 

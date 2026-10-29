@@ -6,10 +6,23 @@ from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.auth.dependencies import get_current_subject
 from ai_knowledge_hub_api.collections.access import get_owned_collection_or_404
+from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.db_session import get_db
 from ai_knowledge_hub_api.embeddings.errors import EmbeddingInputTooLongError
 from ai_knowledge_hub_api.models import Collection
+from ai_knowledge_hub_api.rag import (
+    RagGroundingError,
+    RagOllamaConnectionError,
+    RagOllamaError,
+    RagOllamaModelError,
+    RagOllamaTimeoutError,
+    ask_collection_question,
+)
+from ai_knowledge_hub_api.rag.config import RagConfig
 from ai_knowledge_hub_api.schemas import (
+    CollectionAskRequest,
+    CollectionAskResponse,
+    CollectionAskSourceResponse,
     CollectionCreateRequest,
     CollectionResponse,
     CollectionSearchMatchResponse,
@@ -110,4 +123,88 @@ def search_in_collection(
             )
             for match in matches
         ]
+    )
+
+
+def _rag_config_from_settings(settings: Settings) -> RagConfig:
+    return RagConfig(
+        max_evidence_passages=min(10, max(1, settings.rag_max_evidence_passages)),
+        max_evidence_characters=max(500, settings.rag_max_evidence_characters),
+        max_output_tokens=max(64, settings.rag_max_output_tokens),
+    )
+
+
+@router.post(
+    "/{collection_id}/ask",
+    response_model=CollectionAskResponse,
+)
+def ask_in_collection(
+    collection_id: uuid.UUID,
+    body: CollectionAskRequest,
+    owner_subject: str = Depends(get_current_subject),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> CollectionAskResponse:
+    get_owned_collection_or_404(db, collection_id, owner_subject)
+    try:
+        result = ask_collection_question(
+            db,
+            collection_id=collection_id,
+            owner_subject=owner_subject,
+            question=body.question,
+            top_k=body.top_k,
+            settings=settings,
+            rag_config=_rag_config_from_settings(settings),
+        )
+    except EmbeddingInputTooLongError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except SearchEmbeddingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Question could not be embedded for retrieval",
+        ) from exc
+    except SearchDatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Retrieval is temporarily unavailable",
+        ) from exc
+    except RagGroundingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Answer could not be verified as grounded",
+        ) from exc
+    except (
+        RagOllamaConnectionError,
+        RagOllamaTimeoutError,
+        RagOllamaModelError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Local answer generation is unavailable",
+        ) from exc
+    except RagOllamaError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Local answer generation failed",
+        ) from exc
+
+    return CollectionAskResponse(
+        answer=result.answer,
+        sources=[
+            CollectionAskSourceResponse(
+                source_id=source.source_id,
+                document_id=source.document_id,
+                original_filename=source.original_filename,
+                chunk_index=source.chunk_index,
+                page_numbers=list(source.page_numbers),
+                text=source.text,
+                cosine_distance=source.cosine_distance,
+            )
+            for source in result.sources
+        ],
+        model=result.model,
+        grounded=result.grounded,
     )

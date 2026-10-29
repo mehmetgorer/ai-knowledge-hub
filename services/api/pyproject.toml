@@ -18,6 +18,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sentence-transformers>=6.2.0",
     "sqlalchemy>=2.0",
+    "httpx>=0.28.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
