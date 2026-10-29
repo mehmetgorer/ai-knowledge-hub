@@ -52,6 +52,8 @@ def _split_prose_units(prose: str) -> list[str]:
 
 
 def split_oversized_unit(unit: str, *, max_characters: int) -> list[str]:
+    if max_characters < 1:
+        raise ValueError("max_characters must be at least 1")
     if len(unit) <= max_characters:
         return [unit]
 
@@ -79,7 +81,23 @@ def split_oversized_unit(unit: str, *, max_characters: int) -> list[str]:
             parts.extend(_hard_split(sentence, max_characters=max_characters))
         if buffer.strip():
             parts.append(buffer.strip())
-    return [part for part in parts if part.strip()]
+    return _enforce_part_lengths(parts, max_characters=max_characters)
+
+
+def _enforce_part_lengths(parts: list[str], *, max_characters: int) -> list[str]:
+    enforced: list[str] = []
+    for part in parts:
+        if not part.strip():
+            continue
+        if len(part) <= max_characters:
+            enforced.append(part)
+        else:
+            enforced.extend(_hard_split(part, max_characters=max_characters))
+    return enforced
+
+
+def _fence_shell_length(opener: str, closer: str) -> int:
+    return len(opener) + 1 + len(closer)
 
 
 def _split_code_block(block: str, *, max_characters: int) -> list[str]:
@@ -91,29 +109,66 @@ def _split_code_block(block: str, *, max_characters: int) -> list[str]:
     has_closing_fence = lines[-1].strip().startswith(("```", "~~~"))
     closer = lines[-1] if has_closing_fence else "```"
     body_lines = lines[1:-1] if has_closing_fence else lines[1:]
+    body_text = "\n".join(body_lines)
+
+    shell = _fence_shell_length(opener, closer)
+    if shell > max_characters or max_characters < 4:
+        return _hard_split(body_text or block, max_characters=max_characters)
+
+    inner_limit = max_characters - shell - 1
+    if inner_limit < 1:
+        return _hard_split(body_text or block, max_characters=max_characters)
+
+    if len(opener) + 1 + len(closer) > max_characters:
+        return _hard_split(body_text or block, max_characters=max_characters)
 
     chunks: list[str] = []
     current_body: list[str] = []
-    current_len = len(opener) + 1 + len(closer)
+    current_len = shell
 
     for line in body_lines:
-        line_len = len(line) + 1
+        line_len = len(line) + (1 if current_body else 0)
         if current_body and current_len + line_len > max_characters:
-            chunks.append("\n".join([opener, *current_body, closer]))
+            piece = "\n".join([opener, *current_body, closer])
+            if len(piece) > max_characters:
+                raise ValueError("Generated fenced chunk exceeds max_characters")
+            chunks.append(piece)
             current_body = []
-            current_len = len(opener) + 1 + len(closer)
-        if len(opener) + 1 + line_len + 1 + len(closer) > max_characters:
-            for piece in _hard_split(
-                line, max_characters=max_characters - len(opener) - len(closer) - 4
-            ):
-                chunks.append("\n".join([opener, piece, closer]))
+            current_len = shell
+
+        single_line_piece = "\n".join([opener, line, closer])
+        if len(single_line_piece) > max_characters:
+            for piece in _hard_split(line, max_characters=inner_limit):
+                wrapped = "\n".join([opener, piece, closer])
+                if len(wrapped) > max_characters:
+                    chunks.extend(_hard_split(body_text, max_characters=max_characters))
+                    return [part for part in chunks if part.strip()]
+                chunks.append(wrapped)
             continue
+
         current_body.append(line)
-        current_len += line_len
+        current_len = len("\n".join([opener, *current_body, closer]))
 
     if current_body:
-        chunks.append("\n".join([opener, *current_body, closer]))
-    return chunks
+        piece = "\n".join([opener, *current_body, closer])
+        if len(piece) > max_characters:
+            for line in current_body:
+                chunks.extend(
+                    _hard_split(
+                        "\n".join([opener, line, closer]),
+                        max_characters=max_characters,
+                    )
+                )
+        else:
+            chunks.append(piece)
+
+    if not chunks:
+        minimal = "\n".join([opener, closer])
+        if len(minimal) <= max_characters:
+            return [minimal]
+        return _hard_split(body_text or block, max_characters=max_characters)
+
+    return _enforce_part_lengths(chunks, max_characters=max_characters)
 
 
 def _hard_split(text: str, *, max_characters: int) -> list[str]:

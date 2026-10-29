@@ -199,6 +199,12 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Raises `ChunkingConfigurationError` / `ChunkingLimitExceededError` on invalid settings or incomplete processing when `max_chunks` is exceeded.
 - Not invoked on upload; no DB/embeddings.
 
+## Phase 2D.3b.1 — Chunk size boundary fix (complete)
+
+- After flush, **`overlap + next unit`** is trimmed or overlap omitted so every emitted chunk satisfies **`0 < character_count <= max_characters`** without dropping unique source text.
+- **`segments.py`**: fenced-code splits enforce part lengths; tiny `max_characters`, long lines, and oversized fence openers handled with explicit fallbacks.
+- Regression tests: max-sized units with overlap, overlap overflow, fenced code at small limits, source coverage, deterministic output.
+
 ### Usage (library)
 
 ```python

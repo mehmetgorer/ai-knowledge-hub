@@ -8,6 +8,7 @@ from ai_knowledge_hub_api.documents.chunking import (
     collect_chunk_units_for_coverage,
     validate_chunking_config,
 )
+from ai_knowledge_hub_api.documents.chunking.segments import split_oversized_unit
 from ai_knowledge_hub_api.documents.extraction import extract_document_text
 from ai_knowledge_hub_api.documents.extraction.types import (
     ExtractedPage,
@@ -138,7 +139,7 @@ def test_invalid_overlap_configuration() -> None:
 
 
 def test_max_chunks_limit_raises() -> None:
-    text = "Section.\n\n" * 30
+    text = "\n\n".join(f"Unique section number {index}." for index in range(30))
     extraction = _extraction_from_text(text)
     config = ChunkingConfig(
         target_characters=20,
@@ -171,3 +172,77 @@ def test_no_empty_chunks_emitted() -> None:
     assert [chunk.chunk_index for chunk in result.chunks] == list(
         range(len(result.chunks)),
     )
+
+
+def _assert_chunks_respect_limit(
+    result,
+    config: ChunkingConfig,
+) -> None:
+    for chunk in result.chunks:
+        assert 0 < chunk.character_count <= config.max_characters
+        assert chunk.character_count == len(chunk.text)
+
+
+def test_unit_exactly_max_size_with_overlap() -> None:
+    unit = "x" * 100
+    extraction = _extraction_from_text(f"prefix\n\n{unit}\n\nsuffix")
+    config = ChunkingConfig(
+        target_characters=80,
+        max_characters=100,
+        overlap_characters=40,
+    )
+    result = chunk_extraction_result(extraction, config=config)
+    _assert_chunks_respect_limit(result, config)
+
+
+def test_overlap_trimmed_when_overlap_plus_unit_exceeds_max() -> None:
+    first = "Alpha " * 20
+    second = "Beta " * 20
+    extraction = _extraction_from_text(f"{first}\n\n{second}")
+    config = ChunkingConfig(
+        target_characters=60,
+        max_characters=80,
+        overlap_characters=50,
+    )
+    result = chunk_extraction_result(extraction, config=config)
+    _assert_chunks_respect_limit(result, config)
+    assert len(result.chunks) >= 2
+
+
+def test_oversized_fenced_code_block_with_small_max() -> None:
+    long_line = "y = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10"
+    text = f"```python\n{long_line}\nmore code here\n```"
+    extraction = _extraction_from_text(text, source_kind="markdown")
+    config = ChunkingConfig(
+        target_characters=40,
+        max_characters=55,
+        overlap_characters=0,
+    )
+    result = chunk_extraction_result(extraction, config=config)
+    _assert_chunks_respect_limit(result, config)
+    combined = "\n".join(chunk.text for chunk in result.chunks)
+    assert "y = 1" in combined
+
+
+def test_split_oversized_code_with_long_fence_opener() -> None:
+    opener = "```" + ("language-tag-" * 8)
+    block = f"{opener}\nline-one\nline-two\n```"
+    parts = split_oversized_unit(block, max_characters=30)
+    assert parts
+    for part in parts:
+        assert len(part) <= 30
+
+
+def test_all_chunks_respect_hard_limit_across_existing_scenarios() -> None:
+    configs = [
+        ChunkingConfig(target_characters=20, max_characters=35, overlap_characters=10),
+        ChunkingConfig(target_characters=15, max_characters=25, overlap_characters=5),
+    ]
+    extractions = [
+        _extraction_from_text("Paragraph A.\n\nParagraph B."),
+        _extraction_from_text("# H\n\nBody", source_kind="markdown"),
+    ]
+    for extraction, config in zip(extractions, configs, strict=True):
+        result = chunk_extraction_result(extraction, config=config)
+        _assert_chunks_respect_limit(result, config)
+
