@@ -224,6 +224,11 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - Short DB transactions: claim PROCESSING, then extract/chunk off-connection, then commit chunks + PROCESSED together; failures keep prior chunks and set FAILED.
 - Upload does **not** auto-process.
 
+## Phase 2D.3c.2a — Processing transaction fix (complete)
+
+- Claim commit no longer followed by `refresh()`; document fields copied to an immutable snapshot before extract/chunk so **no SQLAlchemy transaction stays open** during storage read, PDF extraction or chunking.
+- Failed claim rolls back before conflict handling; success/failure persistence behavior unchanged.
+
 ### Usage (library)
 
 ```python

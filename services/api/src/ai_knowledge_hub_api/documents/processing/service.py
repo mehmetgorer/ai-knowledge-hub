@@ -50,6 +50,27 @@ class DocumentProcessResult:
     chunk_count: int
 
 
+@dataclass(frozen=True)
+class _DocumentProcessingSnapshot:
+    document_id: uuid.UUID
+    collection_id: uuid.UUID
+    original_filename: str
+    storage_key: str
+    size_bytes: int
+    content_hash_sha256: str | None
+
+
+def _snapshot_from_document(document: Document) -> _DocumentProcessingSnapshot:
+    return _DocumentProcessingSnapshot(
+        document_id=document.id,
+        collection_id=document.collection_id,
+        original_filename=document.original_filename,
+        storage_key=document.storage_key,
+        size_bytes=document.size_bytes,
+        content_hash_sha256=document.content_hash_sha256,
+    )
+
+
 def process_document(
     db: Session,
     *,
@@ -62,35 +83,14 @@ def process_document(
     Caller supplies an owned ``document`` row. Commits status transitions; on failure
     marks FAILED without removing previously committed chunks.
     """
-    if not _claim_for_processing(db, document.id, document.collection_id):
-        _raise_claim_conflict(db, document.id, document.collection_id)
+    snapshot = _snapshot_from_document(document)
+    if not _claim_for_processing(db, snapshot.document_id, snapshot.collection_id):
+        db.rollback()
+        _raise_claim_conflict(db, snapshot.document_id, snapshot.collection_id)
     db.commit()
-    db.refresh(document)
 
     try:
-        file_bytes = _load_verified_bytes(document, storage)
-        extraction = extract_document_text(
-            file_bytes,
-            filename=document.original_filename,
-        )
-        if extraction.truncated:
-            raise DocumentProcessingFailedError(
-                "Extracted text exceeded configured limits",
-                code="extraction_truncated",
-            )
-        if not extraction.text.strip() and not any(
-            page.text.strip() for page in extraction.pages
-        ):
-            raise DocumentProcessingFailedError(
-                "No extractable text in document",
-                code="empty_extraction",
-            )
-        chunking = chunk_extraction_result(extraction)
-        if not chunking.chunks:
-            raise DocumentProcessingFailedError(
-                "Chunking produced no usable chunks",
-                code="empty_chunks",
-            )
+        chunking = _extract_and_chunk(snapshot, storage)
     except (
         DocumentExtractionError,
         ChunkingError,
@@ -101,10 +101,10 @@ def process_document(
     ) as exc:
         logger.warning(
             "Document processing failed document_id=%s code=%s",
-            document.id,
+            snapshot.document_id,
             getattr(exc, "code", type(exc).__name__),
         )
-        _mark_failed(db, document.id)
+        _mark_failed(db, snapshot.document_id)
         db.commit()
         if isinstance(exc, DocumentProcessingFailedError):
             raise
@@ -115,10 +115,10 @@ def process_document(
     except Exception as exc:
         logger.warning(
             "Document processing failed document_id=%s error_type=%s",
-            document.id,
+            snapshot.document_id,
             type(exc).__name__,
         )
-        _mark_failed(db, document.id)
+        _mark_failed(db, snapshot.document_id)
         db.commit()
         raise DocumentProcessingFailedError(
             "Document processing failed",
@@ -128,18 +128,22 @@ def process_document(
     try:
         replace_document_chunks(
             db,
-            document_id=document.id,
+            document_id=snapshot.document_id,
             chunks=chunking.chunks,
         )
-        document.status = DocumentStatus.PROCESSED
+        db.execute(
+            update(Document)
+            .where(Document.id == snapshot.document_id)
+            .values(status=DocumentStatus.PROCESSED)
+        )
         db.commit()
     except Exception:
         db.rollback()
         logger.warning(
             "Document chunk persistence failed document_id=%s",
-            document.id,
+            snapshot.document_id,
         )
-        _mark_failed(db, document.id)
+        _mark_failed(db, snapshot.document_id)
         db.commit()
         raise DocumentProcessingFailedError(
             "Failed to persist document chunks",
@@ -148,10 +152,40 @@ def process_document(
 
     chunk_count = len(chunking.chunks)
     return DocumentProcessResult(
-        document_id=document.id,
+        document_id=snapshot.document_id,
         status=DocumentStatus.PROCESSED,
         chunk_count=chunk_count,
     )
+
+
+def _extract_and_chunk(
+    snapshot: _DocumentProcessingSnapshot,
+    storage: LocalDocumentStorage,
+):
+    file_bytes = _load_verified_bytes(snapshot, storage)
+    extraction = extract_document_text(
+        file_bytes,
+        filename=snapshot.original_filename,
+    )
+    if extraction.truncated:
+        raise DocumentProcessingFailedError(
+            "Extracted text exceeded configured limits",
+            code="extraction_truncated",
+        )
+    if not extraction.text.strip() and not any(
+        page.text.strip() for page in extraction.pages
+    ):
+        raise DocumentProcessingFailedError(
+            "No extractable text in document",
+            code="empty_extraction",
+        )
+    chunking = chunk_extraction_result(extraction)
+    if not chunking.chunks:
+        raise DocumentProcessingFailedError(
+            "Chunking produced no usable chunks",
+            code="empty_chunks",
+        )
+    return chunking
 
 
 def _claim_for_processing(
@@ -200,18 +234,18 @@ def _raise_claim_conflict(
 
 
 def _load_verified_bytes(
-    document: Document,
+    snapshot: _DocumentProcessingSnapshot,
     storage: LocalDocumentStorage,
 ) -> bytes:
-    data = storage.read(document.storage_key)
-    if len(data) != document.size_bytes:
+    data = storage.read(snapshot.storage_key)
+    if len(data) != snapshot.size_bytes:
         raise DocumentProcessingFailedError(
             "Stored file size does not match document metadata",
             code="storage_integrity",
         )
-    if document.content_hash_sha256:
+    if snapshot.content_hash_sha256:
         digest = hashlib.sha256(data).hexdigest()
-        if digest != document.content_hash_sha256:
+        if digest != snapshot.content_hash_sha256:
             raise DocumentProcessingFailedError(
                 "Stored file hash does not match document metadata",
                 code="storage_integrity",

@@ -18,8 +18,14 @@ from ai_knowledge_hub_api.auth.jwks import StaticJwksResolver
 from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.database import dispose_engine
 from ai_knowledge_hub_api.documents.extraction import extract_document_text
+from ai_knowledge_hub_api.documents.processing import process_document
 from ai_knowledge_hub_api.migrations import ALEMBIC_HEAD_REVISION
-from ai_knowledge_hub_api.models import Document, DocumentChunk, DocumentStatus
+from ai_knowledge_hub_api.models import (
+    Collection,
+    Document,
+    DocumentChunk,
+    DocumentStatus,
+)
 from ai_knowledge_hub_api.storage.dependencies import document_storage_for_settings
 from tests.alembic_test_support import (
     assert_local_postgres_host,
@@ -525,3 +531,47 @@ async def test_ready_documents_cannot_be_processed(
     async with _client_for_subject(key_pair, "owner-a") as client:
         result = await _process(client, collection_id, uploaded["id"])
         assert result.status_code == 409
+
+
+@pytest.mark.integration
+def test_extraction_runs_without_active_db_transaction(
+    migrated_processing_database: str,
+) -> None:
+    del migrated_processing_database
+    settings = get_settings()
+    engine = create_engine(settings.resolved_database_url)
+    storage = document_storage_for_settings(settings)
+    content = b"Transaction idle during extract."
+
+    txn_during_extract: list[bool] = []
+    processing_session: Session | None = None
+
+    def track_extract(*args, **kwargs):
+        assert processing_session is not None
+        txn_during_extract.append(processing_session.in_transaction())
+        return extract_document_text(*args, **kwargs)
+
+    with patch(
+        "ai_knowledge_hub_api.documents.processing.service.extract_document_text",
+        track_extract,
+    ):
+        with Session(engine) as session:
+            processing_session = session
+            collection = Collection(owner_subject="provider|txn-test", name="Txn")
+            session.add(collection)
+            session.flush()
+            document = Document(
+                collection_id=collection.id,
+                original_filename="notes.txt",
+                mime_type="text/plain",
+                size_bytes=len(content),
+                storage_key=f"documents/{collection.id}/{uuid.uuid4()}",
+                status=DocumentStatus.UPLOADED,
+            )
+            session.add(document)
+            session.commit()
+            storage.write(document.storage_key, content)
+            process_document(session, document=document, storage=storage)
+
+    assert txn_during_extract
+    assert all(flag is False for flag in txn_during_extract)
