@@ -314,6 +314,14 @@ session.commit()
 stored = load_document_chunks(session, document.id)
 ```
 
+## Phase 3A.4 — Dashboard document indexing (complete)
+
+- **`indexDocument`** in **`apps/web/lib/api/client.ts`**: authenticated POST index; validates **READY**, **`embedding_model`**, positive **`embedded_chunk_count`**; handles **401/404/409/422**, network and invalid JSON.
+- **`DocumentsPanel`**: **Process** vs **Index** actions by status; **Indexing…** in-flight; per-row feedback from latest process/index response only (not from GET documents).
+- **`document-ui-actions.ts`** + **`processing-ui-guards`**: duplicate/conflict guards; collection-switch refresh/feedback rules reused from processing.
+- **`formatDocumentStatus`**: includes **INDEXING**; **READY** shown as **Indexed / Ready**.
+- Unit tests: **`document-ui-actions.test.ts`**, extended **`processing-ui-guards.test.ts`**.
+
 ## Recommended next steps
 
 1. Document parsing / chunking pipeline after upload.

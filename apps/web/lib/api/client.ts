@@ -1,5 +1,8 @@
 import { getApiBaseUrl } from "@/lib/api/config";
 import { authClient } from "@/lib/auth/client";
+import { formatDocumentStatus } from "@/lib/documents/format-document-status";
+
+export { formatDocumentStatus };
 
 export type CollectionRecord = {
   id: string;
@@ -286,23 +289,6 @@ export function validateDocumentFile(file: File): string | null {
   return null;
 }
 
-export function formatDocumentStatus(status: string): string {
-  switch (status) {
-    case "UPLOADED":
-      return "Uploaded";
-    case "PROCESSING":
-      return "Processing";
-    case "PROCESSED":
-      return "Processed";
-    case "READY":
-      return "Ready";
-    case "FAILED":
-      return "Failed";
-    default:
-      return status;
-  }
-}
-
 const DOCUMENT_PROCESS_STATUSES = new Set([
   "UPLOADED",
   "PROCESSING",
@@ -359,6 +345,58 @@ export async function processDocument(
   }
 
   return { ok: true, process: payload as DocumentProcessResult };
+}
+
+export type DocumentIndexResult = {
+  id: string;
+  status: string;
+  embedding_model: string;
+  embedded_chunk_count: number;
+};
+
+export async function indexDocument(
+  collectionId: string,
+  documentId: string,
+): Promise<
+  | { ok: true; index: DocumentIndexResult }
+  | { ok: false; error: ApiClientError }
+> {
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(documentId)}/index`,
+    { method: "POST" },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON after indexing." },
+    };
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof (payload as DocumentIndexResult).id !== "string" ||
+    (payload as DocumentIndexResult).status !== "READY" ||
+    typeof (payload as DocumentIndexResult).embedding_model !== "string" ||
+    !(payload as DocumentIndexResult).embedding_model.trim() ||
+    typeof (payload as DocumentIndexResult).embedded_chunk_count !== "number" ||
+    !Number.isInteger((payload as DocumentIndexResult).embedded_chunk_count) ||
+    (payload as DocumentIndexResult).embedded_chunk_count <= 0
+  ) {
+    return {
+      ok: false,
+      error: { message: "The API returned an unexpected index response." },
+    };
+  }
+
+  return { ok: true, index: payload as DocumentIndexResult };
 }
 
 export async function fetchDocuments(

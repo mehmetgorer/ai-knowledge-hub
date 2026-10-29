@@ -27,4 +27,31 @@ describe("processing-ui-guards", () => {
     assert.equal(tryAcquireProcessLock(inFlight, "doc-1"), true);
     releaseProcessLock(inFlight, "doc-1");
   });
+
+  it("shared lock blocks duplicate index attempts on the same document", () => {
+    const inFlight = new Set<string>();
+    assert.equal(tryAcquireProcessLock(inFlight, "doc-1"), true);
+    assert.equal(tryAcquireProcessLock(inFlight, "doc-1"), false);
+  });
+
+  it("index flow skips list refresh when user switches collection during request", () => {
+    assert.equal(
+      shouldRefreshDocumentsAfterProcess("collection-b", "collection-a"),
+      false,
+    );
+  });
+
+  it("index flow skips feedback when selection no longer matches start collection", () => {
+    assert.equal(
+      shouldApplyProcessFeedback("collection-b", "collection-a"),
+      false,
+    );
+  });
+
+  it("index flow shows feedback when user returns to the same collection", () => {
+    assert.equal(
+      shouldApplyProcessFeedback("collection-a", "collection-a"),
+      true,
+    );
+  });
 });

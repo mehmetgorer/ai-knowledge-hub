@@ -11,12 +11,19 @@ import {
   fetchCollections,
   fetchDocuments,
   formatDocumentStatus,
+  indexDocument,
   processDocument,
   uploadDocument,
   validateDocumentFile,
   type CollectionRecord,
   type DocumentRecord,
 } from "@/lib/api/client";
+import {
+  indexActionLabel,
+  processActionLabel,
+  shouldDisableIndexButton,
+  shouldDisableProcessButton,
+} from "@/lib/documents/document-ui-actions";
 import {
   releaseProcessLock,
   shouldApplyProcessFeedback,
@@ -47,18 +54,11 @@ type DocumentProcessFeedback =
   | { kind: "success"; chunkCount: number }
   | { kind: "error"; message: string };
 
-function processActionLabel(status: string): string | null {
-  switch (status) {
-    case "UPLOADED":
-      return "Process";
-    case "FAILED":
-      return "Retry";
-    case "PROCESSED":
-      return "Reprocess";
-    default:
-      return null;
-  }
-}
+type DocumentIndexFeedback =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "success"; embeddedChunkCount: number; embeddingModel: string }
+  | { kind: "error"; message: string };
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -121,6 +121,9 @@ export function DocumentsPanel() {
   });
   const [processFeedbackByDocumentId, setProcessFeedbackByDocumentId] = useState<
     Record<string, DocumentProcessFeedback>
+  >({});
+  const [indexFeedbackByDocumentId, setIndexFeedbackByDocumentId] = useState<
+    Record<string, DocumentIndexFeedback>
   >({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -280,6 +283,72 @@ export function DocumentsPanel() {
     [runDocumentsFetch],
   );
 
+  const runIndexDocument = useCallback(
+    async (documentId: string) => {
+      const collectionIdAtStart = selectedCollectionIdRef.current;
+      if (!collectionIdAtStart) {
+        return;
+      }
+      if (!tryAcquireProcessLock(processingDocumentIdsRef.current, documentId)) {
+        return;
+      }
+
+      setIndexFeedbackByDocumentId((current) => ({
+        ...current,
+        [documentId]: { kind: "loading" },
+      }));
+
+      try {
+        const result = await indexDocument(collectionIdAtStart, documentId);
+
+        const selectedNow = selectedCollectionIdRef.current;
+        if (
+          shouldRefreshDocumentsAfterProcess(selectedNow, collectionIdAtStart)
+        ) {
+          const requestId = ++documentsRequestIdRef.current;
+          await runDocumentsFetch(collectionIdAtStart, requestId);
+        }
+
+        if (
+          !shouldApplyProcessFeedback(
+            selectedCollectionIdRef.current,
+            collectionIdAtStart,
+          )
+        ) {
+          setIndexFeedbackByDocumentId((current) => {
+            if (!(documentId in current)) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[documentId];
+            return next;
+          });
+          return;
+        }
+
+        if (!result.ok) {
+          setIndexFeedbackByDocumentId((current) => ({
+            ...current,
+            [documentId]: { kind: "error", message: result.error.message },
+          }));
+          return;
+        }
+
+        setIndexFeedbackByDocumentId((current) => ({
+          ...current,
+          [documentId]: {
+            kind: "success",
+            embeddedChunkCount: result.index.embedded_chunk_count,
+            embeddingModel: result.index.embedding_model,
+          },
+        }));
+      } finally {
+        releaseProcessLock(processingDocumentIdsRef.current, documentId);
+      }
+    },
+    [runDocumentsFetch],
+  );
+
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isUploading || !selectedCollectionId || !selectedFile) {
@@ -332,10 +401,11 @@ export function DocumentsPanel() {
           Documents
         </h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Upload PDF, TXT, or MD files (max 10 MB) into a collection. Use
-          Process to extract text and create chunks on demand. &quot;Processed&quot;
-          means chunks are stored — not yet indexed for semantic search.
-          &quot;Ready&quot; is reserved for future indexing.
+          Upload PDF, TXT, or MD files (max 10 MB) into a collection.{" "}
+          <strong className="font-medium">Process</strong> extracts text and
+          stores chunks; <strong className="font-medium">Index</strong> runs
+          local embedding on processed chunks (first run may take longer while
+          the model initializes). Semantic search is not available in the UI yet.
         </p>
       </div>
 
@@ -384,6 +454,7 @@ export function DocumentsPanel() {
                 onChange={(event) => {
                   setSelectedCollectionId(event.target.value);
                   setProcessFeedbackByDocumentId({});
+                  setIndexFeedbackByDocumentId({});
                   setSelectedFile(null);
                   setUploadError(null);
                   setUploadSuccess(null);
@@ -529,14 +600,26 @@ export function DocumentsPanel() {
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
                     {documentsView.documents.map((document) => {
-                      const actionLabel = processActionLabel(document.status);
-                      const feedback =
+                      const processLabel = processActionLabel(document.status);
+                      const indexLabel = indexActionLabel(document.status);
+                      const processFeedback =
                         processFeedbackByDocumentId[document.id] ?? {
                           kind: "idle" as const,
                         };
-                      const isProcessingRow =
-                        document.status === "PROCESSING" ||
-                        feedback.kind === "loading";
+                      const indexFeedback =
+                        indexFeedbackByDocumentId[document.id] ?? {
+                          kind: "idle" as const,
+                        };
+                      const rowActionState = {
+                        status: document.status,
+                        processFeedbackKind: processFeedback.kind,
+                        indexFeedbackKind: indexFeedback.kind,
+                        documentsReady: documentsView.kind === "ready",
+                      };
+                      const disableProcess =
+                        shouldDisableProcessButton(rowActionState);
+                      const disableIndex =
+                        shouldDisableIndexButton(rowActionState);
 
                       return (
                       <tr key={document.id}>
@@ -550,7 +633,7 @@ export function DocumentsPanel() {
                           {formatDocumentStatus(document.status)}
                           {document.status === "PROCESSED" ? (
                             <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-500">
-                              Chunks stored; not indexed yet
+                              Text chunks stored; vectors not indexed yet
                             </span>
                           ) : null}
                         </td>
@@ -559,22 +642,19 @@ export function DocumentsPanel() {
                         </td>
                         <td className="px-4 py-3 align-top">
                           <div className="flex min-w-[8rem] flex-col gap-1.5">
-                            {actionLabel ? (
+                            {processLabel ? (
                               <button
                                 type="button"
                                 className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
-                                disabled={
-                                  isProcessingRow ||
-                                  documentsView.kind !== "ready"
-                                }
-                                aria-busy={feedback.kind === "loading"}
+                                disabled={disableProcess}
+                                aria-busy={processFeedback.kind === "loading"}
                                 onClick={() => {
                                   void runProcessDocument(document.id);
                                 }}
                               >
-                                {feedback.kind === "loading"
-                                  ? "Working…"
-                                  : actionLabel}
+                                {processFeedback.kind === "loading"
+                                  ? "Processing…"
+                                  : processLabel}
                               </button>
                             ) : document.status === "PROCESSING" ? (
                               <span
@@ -583,27 +663,70 @@ export function DocumentsPanel() {
                               >
                                 Processing…
                               </span>
+                            ) : null}
+                            {indexLabel ? (
+                              <button
+                                type="button"
+                                className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                                disabled={disableIndex}
+                                aria-busy={indexFeedback.kind === "loading"}
+                                onClick={() => {
+                                  void runIndexDocument(document.id);
+                                }}
+                              >
+                                {indexFeedback.kind === "loading"
+                                  ? "Indexing…"
+                                  : indexLabel}
+                              </button>
+                            ) : document.status === "INDEXING" ? (
+                              <span
+                                className="text-xs text-zinc-600 dark:text-zinc-400"
+                                role="status"
+                              >
+                                Indexing…
+                              </span>
                             ) : document.status === "READY" ? (
                               <span className="text-xs text-zinc-500 dark:text-zinc-500">
                                 Indexed (reprocess unavailable)
                               </span>
                             ) : null}
-                            {feedback.kind === "success" ? (
+                            {processFeedback.kind === "success" ? (
                               <p
                                 className="text-xs text-green-700 dark:text-green-400"
                                 role="status"
                               >
-                                {feedback.chunkCount} chunk
-                                {feedback.chunkCount === 1 ? "" : "s"} from
-                                latest run
+                                {processFeedback.chunkCount} chunk
+                                {processFeedback.chunkCount === 1 ? "" : "s"}{" "}
+                                from latest process run
                               </p>
                             ) : null}
-                            {feedback.kind === "error" ? (
+                            {indexFeedback.kind === "success" ? (
+                              <p
+                                className="text-xs text-green-700 dark:text-green-400"
+                                role="status"
+                              >
+                                {indexFeedback.embeddedChunkCount} embedding
+                                {indexFeedback.embeddedChunkCount === 1
+                                  ? ""
+                                  : "s"}{" "}
+                                ({indexFeedback.embeddingModel}) from latest
+                                index run
+                              </p>
+                            ) : null}
+                            {processFeedback.kind === "error" ? (
                               <p
                                 className="text-xs text-red-600 dark:text-red-400"
                                 role="alert"
                               >
-                                {feedback.message}
+                                {processFeedback.message}
+                              </p>
+                            ) : null}
+                            {indexFeedback.kind === "error" ? (
+                              <p
+                                className="text-xs text-red-600 dark:text-red-400"
+                                role="alert"
+                              >
+                                {indexFeedback.message}
                               </p>
                             ) : null}
                           </div>
