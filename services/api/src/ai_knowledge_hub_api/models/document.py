@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 class DocumentStatus(enum.StrEnum):
     UPLOADED = "UPLOADED"
     PROCESSING = "PROCESSING"
+    PROCESSED = "PROCESSED"
     READY = "READY"
     FAILED = "FAILED"
 

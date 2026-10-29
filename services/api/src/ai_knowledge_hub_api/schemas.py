@@ -55,3 +55,9 @@ class DocumentResponse(BaseModel):
     content_hash_sha256: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentProcessResponse(BaseModel):
+    id: UUID
+    status: DocumentStatus
+    chunk_count: int

@@ -215,7 +215,14 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 
 - **`document_chunks`** table (Alembic `0003_document_chunks`): UUID PK, FK to `documents` ON DELETE CASCADE, `chunk_index`, `text`, `source_kind`, `page_numbers` (integer array), `character_count`, `created_at`; UNIQUE `(document_id, chunk_index)` and index on `document_id`.
 - **`DocumentChunk`** SQLAlchemy model; **`replace_document_chunks`** / **`load_document_chunks`** accept `TextChunk` results; caller owns commit/rollback (delete-all-then-insert in one transaction — rollback restores prior rows).
-- No new API fields or automatic processing; `Document.status` unchanged.
+- No new API fields or automatic processing yet in 2D.3c.1.
+
+## Phase 2D.3c.2 — Document processing pipeline (complete)
+
+- **`POST /collections/{collection_id}/documents/{document_id}/process`** (JWT): loads file by server `storage_key`, verifies size/SHA-256, runs extract → chunk → **`replace_document_chunks`**; response `{ id, status, chunk_count }` only (no chunk text or paths).
+- **`DocumentStatus.PROCESSED`** (Alembic `0004`): UPLOADED → PROCESSING → PROCESSED on success, FAILED on error; **READY** cannot be reprocessed yet; **409** while PROCESSING or for READY.
+- Short DB transactions: claim PROCESSING, then extract/chunk off-connection, then commit chunks + PROCESSED together; failures keep prior chunks and set FAILED.
+- Upload does **not** auto-process.
 
 ### Usage (library)
 

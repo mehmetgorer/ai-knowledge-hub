@@ -15,13 +15,19 @@ from ai_knowledge_hub_api.auth.dependencies import get_current_subject
 from ai_knowledge_hub_api.collections.access import get_owned_collection_or_404
 from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.db_session import get_db
+from ai_knowledge_hub_api.documents.access import get_owned_document_or_404
+from ai_knowledge_hub_api.documents.processing import (
+    DocumentProcessingConflictError,
+    DocumentProcessingFailedError,
+    process_document,
+)
 from ai_knowledge_hub_api.documents.validation import (
     DocumentUploadValidationError,
     generate_storage_key,
     validate_upload_content,
 )
 from ai_knowledge_hub_api.models import Document, DocumentStatus
-from ai_knowledge_hub_api.schemas import DocumentResponse
+from ai_knowledge_hub_api.schemas import DocumentProcessResponse, DocumentResponse
 from ai_knowledge_hub_api.storage.dependencies import get_document_storage
 from ai_knowledge_hub_api.storage.local import LocalDocumentStorage
 
@@ -115,3 +121,45 @@ def list_documents(
         .order_by(Document.created_at.desc())
     )
     return list(db.scalars(statement).all())
+
+
+@router.post(
+    "/{collection_id}/documents/{document_id}/process",
+    response_model=DocumentProcessResponse,
+)
+def process_collection_document(
+    collection_id: uuid.UUID,
+    document_id: uuid.UUID,
+    owner_subject: str = Depends(get_current_subject),
+    db: Session = Depends(get_db),
+    storage: LocalDocumentStorage = Depends(get_document_storage),
+) -> DocumentProcessResponse:
+    document = get_owned_document_or_404(
+        db,
+        collection_id,
+        document_id,
+        owner_subject,
+    )
+    try:
+        result = process_document(db, document=document, storage=storage)
+    except DocumentProcessingConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except DocumentProcessingFailedError as exc:
+        if exc.code == "not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.message,
+        ) from exc
+
+    return DocumentProcessResponse(
+        id=result.document_id,
+        status=result.status,
+        chunk_count=result.chunk_count,
+    )

@@ -25,6 +25,7 @@ def test_document_table_columns_and_status_enum() -> None:
     assert {status.value for status in DocumentStatus} == {
         "UPLOADED",
         "PROCESSING",
+        "PROCESSED",
         "READY",
         "FAILED",
     }

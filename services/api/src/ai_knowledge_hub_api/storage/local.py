@@ -29,6 +29,12 @@ class LocalDocumentStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
+    def read(self, storage_key: str) -> bytes:
+        path = self.resolve_key_path(storage_key)
+        if not path.is_file():
+            raise FileNotFoundError("Stored document object not found")
+        return path.read_bytes()
+
     def delete(self, storage_key: str) -> None:
         try:
             path = self.resolve_key_path(storage_key)
