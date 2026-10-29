@@ -245,4 +245,3 @@ def test_all_chunks_respect_hard_limit_across_existing_scenarios() -> None:
     for extraction, config in zip(extractions, configs, strict=True):
         result = chunk_extraction_result(extraction, config=config)
         _assert_chunks_respect_limit(result, config)
-
