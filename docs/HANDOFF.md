@@ -322,6 +322,17 @@ stored = load_document_chunks(session, document.id)
 - **`formatDocumentStatus`**: includes **INDEXING**; **READY** shown as **Indexed / Ready**.
 - Unit tests: **`document-ui-actions.test.ts`**, extended **`processing-ui-guards.test.ts`**.
 
+## Phase 3B.1 — Backend semantic search (complete)
+
+- **`POST /collections/{collection_id}/search`** (JWT): body `{ query, top_k? }` (default **5**, **1–10**); response `{ matches: [...] }` with **document_id**, **original_filename**, **chunk_index**, **text**, **source_kind**, **page_numbers**, **cosine_distance**.
+- **`semantic_search_collection`** in **`ai_knowledge_hub_api.search`**: **`db.commit()`** before **`embed_search_query`**, pgvector **`cosine_distance`** in SQL, **READY** + configured **embedding_model** + non-null **embedding** only; collection **owner_subject** enforced in query; tie-break **document id**, **chunk_index**.
+- Errors: **422** validation / token limit / embed failure; **404** collection; **503** DB search failure. No RAG/LLM.
+
+```http
+POST /collections/{collection_id}/search
+{ "query": "Arama sorgusu", "top_k": 5 }
+```
+
 ## Recommended next steps
 
 1. Document parsing / chunking pipeline after upload.

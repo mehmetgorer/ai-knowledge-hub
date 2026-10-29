@@ -68,3 +68,30 @@ class DocumentIndexResponse(BaseModel):
     status: DocumentStatus
     embedding_model: str
     embedded_chunk_count: int
+
+
+class CollectionSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_be_non_empty_after_strip(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be empty")
+        return stripped
+
+
+class CollectionSearchMatchResponse(BaseModel):
+    document_id: UUID
+    original_filename: str
+    chunk_index: int
+    text: str
+    source_kind: str
+    page_numbers: list[int]
+    cosine_distance: float
+
+
+class CollectionSearchResponse(BaseModel):
+    matches: list[CollectionSearchMatchResponse]
