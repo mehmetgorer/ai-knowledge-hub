@@ -255,6 +255,33 @@ vectors = embed_document_chunks(["Chunk text…"])
 query_vector = embed_search_query("Arama sorgusu")
 ```
 
+## Phase 3A.2 — Chunk embedding persistence (complete)
+
+- Alembic **`0005_document_chunk_embeddings`**: nullable **`embedding VECTOR(384)`**, **`embedding_model`**, **`embedded_at`** on **`document_chunks`** (pgvector extension from `0001`).
+- **`DocumentChunk`** model updated; existing rows without embeddings remain valid.
+- **`persist_document_chunk_embeddings`** / **`load_document_chunk_embeddings`** in **`ai_knowledge_hub_api.embeddings.persistence`**: exact **`chunk_index`** set match, 384-d finite L2-normalized vectors, **`embedding_model`** must match configured E5 model name, **`DocumentStatus.PROCESSED`** only, document + chunk **`FOR UPDATE`** locking; validate-all-then-update in caller transaction.
+- **`embed_document_chunks`** rejects when the model returns fewer/more vectors than inputs.
+- No API, no auto-embed after process, no READY transition, no vector index yet.
+
+```python
+from ai_knowledge_hub_api.embeddings.persistence import (
+    ChunkEmbeddingInput,
+    persist_document_chunk_embeddings,
+    load_document_chunk_embeddings,
+)
+
+persist_document_chunk_embeddings(
+    session,
+    document_id=document.id,
+    embeddings=(
+        ChunkEmbeddingInput(chunk_index=0, vector=tuple(...)),
+    ),
+    embedding_model="intfloat/multilingual-e5-small",
+)
+session.commit()
+stored = load_document_chunk_embeddings(session, document.id)
+```
+
 ### Usage (library)
 
 ```python

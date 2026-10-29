@@ -1,3 +1,3 @@
 """Alembic revision identifiers shared with tests."""
 
-ALEMBIC_HEAD_REVISION = "0004_document_status_processed"
+ALEMBIC_HEAD_REVISION = "0005_document_chunk_embeddings"

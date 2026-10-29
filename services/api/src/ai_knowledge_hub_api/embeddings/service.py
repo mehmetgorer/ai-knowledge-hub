@@ -166,6 +166,12 @@ def embed_document_chunks(
     if np_vectors.ndim != 2:
         raise EmbeddingInferenceError("Unexpected embedding output shape")
 
+    if np_vectors.shape[0] != len(chunks):
+        raise EmbeddingInferenceError(
+            "Embedding model returned "
+            f"{np_vectors.shape[0]} vectors for {len(chunks)} inputs"
+        )
+
     results: list[list[float]] = []
     for index in range(np_vectors.shape[0]):
         row = np_vectors[index].tolist()

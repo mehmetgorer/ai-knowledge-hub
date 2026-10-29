@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -51,6 +52,12 @@ class DocumentChunk(Base):
         server_default="{}",
     )
     character_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    embedded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

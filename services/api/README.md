@@ -30,6 +30,9 @@ uv run alembic downgrade base
 | -------- | ------- |
 | `0001_enable_vector` | `CREATE EXTENSION IF NOT EXISTS vector` (downgrade does not drop extension) |
 | `0002_collections_documents` | `collections` and `documents` tables |
+| `0003_document_chunks` | `document_chunks` table |
+| `0004_document_status_processed` | `DocumentStatus.PROCESSED` enum value |
+| `0005_document_chunk_embeddings` | nullable pgvector columns on `document_chunks` |
 
 ORM models live in `src/ai_knowledge_hub_api/models/`. `Collection.owner_subject` must come from a **verified** identity provider in production, not from unauthenticated client input (see model docstring).
 

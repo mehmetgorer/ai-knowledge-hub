@@ -180,3 +180,14 @@ def test_inference_errors_are_wrapped() -> None:
     model.encode = boom  # type: ignore[method-assign]
     with pytest.raises(EmbeddingInferenceError):
         embed_search_query("fail please")
+
+
+def test_embed_document_chunks_rejects_vector_count_mismatch() -> None:
+    model, _, _ = _install_mock_runtime()
+
+    def short_batch(*_args, **_kwargs):
+        return np.zeros((1, 384))
+
+    model.encode = short_batch  # type: ignore[method-assign]
+    with pytest.raises(EmbeddingInferenceError, match="1 vectors for 2 inputs"):
+        embed_document_chunks(["one", "two"])

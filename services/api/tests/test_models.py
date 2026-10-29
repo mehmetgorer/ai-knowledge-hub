@@ -44,6 +44,9 @@ def test_document_chunk_table_columns() -> None:
         "source_kind",
         "page_numbers",
         "character_count",
+        "embedding",
+        "embedding_model",
+        "embedded_at",
         "created_at",
     }
 
