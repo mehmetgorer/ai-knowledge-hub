@@ -16,6 +16,11 @@ from ai_knowledge_hub_api.collections.access import get_owned_collection_or_404
 from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.db_session import get_db
 from ai_knowledge_hub_api.documents.access import get_owned_document_or_404
+from ai_knowledge_hub_api.documents.indexing import (
+    DocumentIndexingConflictError,
+    DocumentIndexingFailedError,
+    index_document,
+)
 from ai_knowledge_hub_api.documents.processing import (
     DocumentProcessingConflictError,
     DocumentProcessingFailedError,
@@ -27,7 +32,11 @@ from ai_knowledge_hub_api.documents.validation import (
     validate_upload_content,
 )
 from ai_knowledge_hub_api.models import Document, DocumentStatus
-from ai_knowledge_hub_api.schemas import DocumentProcessResponse, DocumentResponse
+from ai_knowledge_hub_api.schemas import (
+    DocumentIndexResponse,
+    DocumentProcessResponse,
+    DocumentResponse,
+)
 from ai_knowledge_hub_api.storage.dependencies import get_document_storage
 from ai_knowledge_hub_api.storage.local import LocalDocumentStorage
 
@@ -162,4 +171,46 @@ def process_collection_document(
         id=result.document_id,
         status=result.status,
         chunk_count=result.chunk_count,
+    )
+
+
+@router.post(
+    "/{collection_id}/documents/{document_id}/index",
+    response_model=DocumentIndexResponse,
+)
+def index_collection_document(
+    collection_id: uuid.UUID,
+    document_id: uuid.UUID,
+    owner_subject: str = Depends(get_current_subject),
+    db: Session = Depends(get_db),
+) -> DocumentIndexResponse:
+    document = get_owned_document_or_404(
+        db,
+        collection_id,
+        document_id,
+        owner_subject,
+    )
+    try:
+        result = index_document(db, document=document)
+    except DocumentIndexingConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except DocumentIndexingFailedError as exc:
+        if exc.code == "not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.message,
+        ) from exc
+
+    return DocumentIndexResponse(
+        id=result.document_id,
+        status=result.status,
+        embedding_model=result.embedding_model,
+        embedded_chunk_count=result.embedded_chunk_count,
     )

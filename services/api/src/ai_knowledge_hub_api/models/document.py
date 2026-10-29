@@ -26,6 +26,7 @@ class DocumentStatus(enum.StrEnum):
     UPLOADED = "UPLOADED"
     PROCESSING = "PROCESSING"
     PROCESSED = "PROCESSED"
+    INDEXING = "INDEXING"
     READY = "READY"
     FAILED = "FAILED"
 

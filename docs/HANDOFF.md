@@ -259,7 +259,7 @@ query_vector = embed_search_query("Arama sorgusu")
 
 - Alembic **`0005_document_chunk_embeddings`**: nullable **`embedding VECTOR(384)`**, **`embedding_model`**, **`embedded_at`** on **`document_chunks`** (pgvector extension from `0001`).
 - **`DocumentChunk`** model updated; existing rows without embeddings remain valid.
-- **`persist_document_chunk_embeddings`** / **`load_document_chunk_embeddings`** in **`ai_knowledge_hub_api.embeddings.persistence`**: exact **`chunk_index`** set match, 384-d finite L2-normalized vectors, **`embedding_model`** must match configured E5 model name, **`DocumentStatus.PROCESSED`** only, document + chunk **`FOR UPDATE`** locking; validate-all-then-update in caller transaction.
+- **`persist_document_chunk_embeddings`** / **`load_document_chunk_embeddings`**: … **`DocumentStatus.PROCESSED`** or **`INDEXING`** …
 - **`embed_document_chunks`** rejects when the model returns fewer/more vectors than inputs.
 - No API, no auto-embed after process, no READY transition, no vector index yet.
 
@@ -280,6 +280,20 @@ persist_document_chunk_embeddings(
 )
 session.commit()
 stored = load_document_chunk_embeddings(session, document.id)
+```
+
+## Phase 3A.3 — On-demand document indexing (complete)
+
+- Alembic **`0006_document_status_indexing`**: **`DocumentStatus.INDEXING`** (additive enum).
+- Lifecycle: UPLOADED → PROCESSING → PROCESSED (chunks, no embeddings) → INDEXING → READY; FAILED unchanged.
+- **`POST /collections/{collection_id}/documents/{document_id}/index`** (JWT): claim **PROCESSED → INDEXING**, load chunk snapshot, **`embed_document_chunks`** off-connection, **`persist_document_chunk_embeddings`**, atomically **READY**; **409** on conflict; **404** cross-user/missing; **422** on inference/persistence failure with safe messages.
+- Failures restore **PROCESSED**; chunks and text preserved; no partial READY.
+- Processing pipeline unchanged; **INDEXING** blocks reprocess (**409**). No auto-index on upload/process.
+- Process crash may leave **INDEXING** stuck (recovery deferred).
+
+```http
+POST /collections/{collection_id}/documents/{document_id}/index
+→ { "id", "status": "READY", "embedding_model", "embedded_chunk_count" }
 ```
 
 ### Usage (library)

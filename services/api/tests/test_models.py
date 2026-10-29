@@ -26,6 +26,7 @@ def test_document_table_columns_and_status_enum() -> None:
         "UPLOADED",
         "PROCESSING",
         "PROCESSED",
+        "INDEXING",
         "READY",
         "FAILED",
     }

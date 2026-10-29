@@ -15,6 +15,13 @@ from ai_knowledge_hub_api.models.document_chunk import DocumentChunk
 
 DEFAULT_EMBEDDING_CONFIG = EmbeddingConfig()
 
+_EMBEDDING_PERSIST_STATUSES = frozenset(
+    {
+        DocumentStatus.PROCESSED,
+        DocumentStatus.INDEXING,
+    }
+)
+
 
 class ChunkEmbeddingPersistenceError(Exception):
     """Invalid embedding payload or document state for persistence."""
@@ -58,9 +65,10 @@ def persist_document_chunk_embeddings(
     )
     if document is None:
         raise ChunkEmbeddingPersistenceError("Document not found")
-    if document.status != DocumentStatus.PROCESSED:
+    if document.status not in _EMBEDDING_PERSIST_STATUSES:
         raise ChunkEmbeddingPersistenceError(
-            "Embeddings may only be stored for documents in PROCESSED status"
+            "Embeddings may only be stored for documents in "
+            "PROCESSED or INDEXING status"
         )
 
     rows = session.scalars(

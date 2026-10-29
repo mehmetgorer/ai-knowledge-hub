@@ -224,6 +224,8 @@ def _raise_claim_conflict(
         )
     if document.status == DocumentStatus.PROCESSING:
         raise DocumentProcessingConflictError("Document is already being processed")
+    if document.status == DocumentStatus.INDEXING:
+        raise DocumentProcessingConflictError("Document is being indexed")
     if document.status == DocumentStatus.READY:
         raise DocumentProcessingConflictError(
             "Document is ready for indexing; reprocessing is not allowed yet"

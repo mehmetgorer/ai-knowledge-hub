@@ -61,3 +61,10 @@ class DocumentProcessResponse(BaseModel):
     id: UUID
     status: DocumentStatus
     chunk_count: int
+
+
+class DocumentIndexResponse(BaseModel):
+    id: UUID
+    status: DocumentStatus
+    embedding_model: str
+    embedded_chunk_count: int
