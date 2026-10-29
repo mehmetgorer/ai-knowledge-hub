@@ -333,6 +333,12 @@ POST /collections/{collection_id}/search
 { "query": "Arama sorgusu", "top_k": 5 }
 ```
 
+## Phase 3B.2 — Dashboard semantic search (complete)
+
+- **`searchCollection`** in **`apps/web/lib/api/client.ts`**: POST search with **`query`** / **`top_k`** validation and strict **`matches`** parsing.
+- **`DocumentsPanel`**: semantic search section (shared collection selector), top_k **3/5/10**, loading/error/empty states, passage results with metadata; **`search-ui-guards`** for stale collection/query/request races.
+- Unit tests: **`lib/search/parse-search-response.test.ts`**, **`lib/search/search-ui-guards.test.ts`**; CI runs **`npm run test --workspace=web`**.
+
 ## Recommended next steps
 
 1. Document parsing / chunking pipeline after upload.

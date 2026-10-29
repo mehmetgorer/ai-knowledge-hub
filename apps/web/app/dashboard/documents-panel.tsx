@@ -13,11 +13,22 @@ import {
   formatDocumentStatus,
   indexDocument,
   processDocument,
+  searchCollection,
   uploadDocument,
   validateDocumentFile,
   type CollectionRecord,
   type DocumentRecord,
+  type SearchMatch,
+  SEARCH_TOP_K_OPTIONS,
 } from "@/lib/api/client";
+import {
+  formatCosineDistance,
+  formatSearchPageNumbers,
+  shouldApplySearchResults,
+  shouldDisableSearchSubmit,
+  shouldDisplaySearchState,
+} from "@/lib/search/search-ui-guards";
+import { validateSearchQueryInput } from "@/lib/search/parse-search-response";
 import {
   indexActionLabel,
   processActionLabel,
@@ -59,6 +70,18 @@ type DocumentIndexFeedback =
   | { kind: "loading" }
   | { kind: "success"; embeddedChunkCount: number; embeddingModel: string }
   | { kind: "error"; message: string };
+
+type SearchViewState =
+  | { kind: "idle" }
+  | { kind: "loading"; collectionId: string }
+  | {
+      kind: "ready";
+      collectionId: string;
+      query: string;
+      matches: SearchMatch[];
+    }
+  | { kind: "empty"; collectionId: string; query: string }
+  | { kind: "error"; collectionId: string; query: string; message: string };
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -103,12 +126,16 @@ function documentsViewForSelection(
 export function DocumentsPanel() {
   const collectionFieldId = useId();
   const fileFieldId = useId();
+  const searchQueryFieldId = useId();
+  const searchTopKFieldId = useId();
 
   const [collectionsState, setCollectionsState] = useState<CollectionsLoadState>(
     { kind: "loading" },
   );
   const [selectedCollectionId, setSelectedCollectionId] = useState("");
   const documentsRequestIdRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
+  const searchInFlightRef = useRef(false);
   const processingDocumentIdsRef = useRef<Set<string>>(new Set());
   const selectedCollectionIdRef = useRef(selectedCollectionId);
 
@@ -125,6 +152,12 @@ export function DocumentsPanel() {
   const [indexFeedbackByDocumentId, setIndexFeedbackByDocumentId] = useState<
     Record<string, DocumentIndexFeedback>
   >({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
+  const [searchTopK, setSearchTopK] = useState<3 | 5 | 10>(5);
+  const [searchState, setSearchState] = useState<SearchViewState>({
+    kind: "idle",
+  });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -349,6 +382,88 @@ export function DocumentsPanel() {
     [runDocumentsFetch],
   );
 
+  const runCollectionSearch = useCallback(async () => {
+    const collectionIdAtStart = selectedCollectionIdRef.current;
+    if (!collectionIdAtStart || searchInFlightRef.current) {
+      return;
+    }
+
+    const queryError = validateSearchQueryInput(searchQuery);
+    if (queryError) {
+      setSearchState({
+        kind: "error",
+        collectionId: collectionIdAtStart,
+        query: searchQuery.trim(),
+        message: queryError,
+      });
+      return;
+    }
+
+    const queryFingerprint = searchQuery.trim();
+    setSubmittedSearchQuery(queryFingerprint);
+    searchInFlightRef.current = true;
+    const requestId = ++searchRequestIdRef.current;
+    setSearchState({ kind: "loading", collectionId: collectionIdAtStart });
+
+    try {
+      const result = await searchCollection(
+        collectionIdAtStart,
+        queryFingerprint,
+        searchTopK,
+      );
+
+      if (
+        !shouldApplySearchResults({
+          completedRequestId: requestId,
+          activeRequestId: searchRequestIdRef.current,
+          selectedCollectionId: selectedCollectionIdRef.current,
+          collectionIdWhenSearchStarted: collectionIdAtStart,
+          currentQueryFingerprint: queryFingerprint,
+          queryFingerprintWhenSearchStarted: queryFingerprint,
+        })
+      ) {
+        return;
+      }
+
+      if (!result.ok) {
+        setSearchState({
+          kind: "error",
+          collectionId: collectionIdAtStart,
+          query: queryFingerprint,
+          message: result.error.message,
+        });
+        return;
+      }
+
+      if (result.search.matches.length === 0) {
+        setSearchState({
+          kind: "empty",
+          collectionId: collectionIdAtStart,
+          query: queryFingerprint,
+        });
+        return;
+      }
+
+      setSearchState({
+        kind: "ready",
+        collectionId: collectionIdAtStart,
+        query: queryFingerprint,
+        matches: result.search.matches,
+      });
+    } finally {
+      searchInFlightRef.current = false;
+    }
+  }, [searchQuery, searchTopK]);
+
+  const showSearchFeedback = shouldDisplaySearchState({
+    searchStateKind: searchState.kind,
+    searchCollectionId:
+      searchState.kind === "idle" ? undefined : searchState.collectionId,
+    selectedCollectionId,
+    currentQueryTrimmed: searchQuery.trim(),
+    submittedQueryTrimmed: submittedSearchQuery,
+  });
+
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isUploading || !selectedCollectionId || !selectedFile) {
@@ -405,7 +520,8 @@ export function DocumentsPanel() {
           <strong className="font-medium">Process</strong> extracts text and
           stores chunks; <strong className="font-medium">Index</strong> runs
           local embedding on processed chunks (first run may take longer while
-          the model initializes). Semantic search is not available in the UI yet.
+          the model initializes). Use semantic search below to find passages in
+          indexed (Ready) documents — not AI-generated answers.
         </p>
       </div>
 
@@ -455,6 +571,9 @@ export function DocumentsPanel() {
                   setSelectedCollectionId(event.target.value);
                   setProcessFeedbackByDocumentId({});
                   setIndexFeedbackByDocumentId({});
+                  setSearchQuery("");
+                  setSubmittedSearchQuery("");
+                  setSearchState({ kind: "idle" });
                   setSelectedFile(null);
                   setUploadError(null);
                   setUploadSuccess(null);
@@ -527,6 +646,166 @@ export function DocumentsPanel() {
               {uploadSuccess}
             </p>
           ) : null}
+
+          <div className="space-y-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+            <div>
+              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                Semantic search
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                Searches indexed (Ready) documents in the selected collection
+                only. Results are relevant passages ranked by cosine distance
+                (lower is closer) — not answer confidence or generated text.
+              </p>
+            </div>
+            <form
+              className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runCollectionSearch();
+              }}
+            >
+              <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
+                <label
+                  htmlFor={searchQueryFieldId}
+                  className={authLabelClassName}
+                >
+                  Query
+                </label>
+                <input
+                  id={searchQueryFieldId}
+                  name="searchQuery"
+                  type="text"
+                  value={searchQuery}
+                  disabled={searchState.kind === "loading"}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                  }}
+                  className={authFieldClassName}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+                <label htmlFor={searchTopKFieldId} className={authLabelClassName}>
+                  Results
+                </label>
+                <select
+                  id={searchTopKFieldId}
+                  name="searchTopK"
+                  value={searchTopK}
+                  disabled={searchState.kind === "loading"}
+                  onChange={(event) => {
+                    setSearchTopK(Number(event.target.value) as 3 | 5 | 10);
+                  }}
+                  className={authFieldClassName}
+                >
+                  {SEARCH_TOP_K_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      Top {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={shouldDisableSearchSubmit({
+                  collectionSelected: Boolean(selectedCollectionId),
+                  queryValid: validateSearchQueryInput(searchQuery) === null,
+                  inFlight: searchState.kind === "loading",
+                })}
+                className={`${authButtonClassName} w-full sm:w-auto sm:min-w-[9rem]`}
+                aria-busy={searchState.kind === "loading"}
+              >
+                {searchState.kind === "loading" ? "Searching…" : "Search"}
+              </button>
+            </form>
+
+            {searchState.kind === "loading" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <p
+                className="text-sm text-zinc-600 dark:text-zinc-400"
+                role="status"
+              >
+                Searching indexed chunks…
+              </p>
+            ) : null}
+
+            {searchState.kind === "error" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <div className="space-y-2">
+                <p
+                  className="text-sm text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {searchState.message}
+                </p>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
+                  onClick={() => {
+                    void runCollectionSearch();
+                  }}
+                >
+                  Retry search
+                </button>
+              </div>
+            ) : null}
+
+            {searchState.kind === "empty" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <p
+                className="text-sm text-zinc-600 dark:text-zinc-400"
+                role="status"
+              >
+                No matching indexed passages for &quot;{searchState.query}&quot;.
+              </p>
+            ) : null}
+
+            {searchState.kind === "ready" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <ol className="space-y-3">
+                {searchState.matches.map((match, index) => (
+                  <li
+                    key={`${match.document_id}-${match.chunk_index}-${index}`}
+                    className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                  >
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                      {match.original_filename}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                      {match.text}
+                    </p>
+                    <dl className="mt-2 grid gap-1 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-2">
+                      <div>
+                        <dt className="inline font-medium">Chunk: </dt>
+                        <dd className="inline">{match.chunk_index}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Pages: </dt>
+                        <dd className="inline">
+                          {formatSearchPageNumbers(match.page_numbers)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Source: </dt>
+                        <dd className="inline">{match.source_kind}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Distance: </dt>
+                        <dd className="inline">
+                          {formatCosineDistance(match.cosine_distance)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </div>
 
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-50">

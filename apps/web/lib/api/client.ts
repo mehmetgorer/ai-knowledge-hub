@@ -1,8 +1,16 @@
 import { getApiBaseUrl } from "@/lib/api/config";
 import { authClient } from "@/lib/auth/client";
 import { formatDocumentStatus } from "@/lib/documents/format-document-status";
+import {
+  parseSearchResponse,
+  type SearchResult,
+  validateSearchQueryInput,
+  validateSearchTopK,
+} from "@/lib/search/parse-search-response";
 
 export { formatDocumentStatus };
+export type { SearchMatch, SearchResult, SearchTopK } from "@/lib/search/parse-search-response";
+export { SEARCH_TOP_K_OPTIONS } from "@/lib/search/parse-search-response";
 
 export type CollectionRecord = {
   id: string;
@@ -397,6 +405,55 @@ export async function indexDocument(
   }
 
   return { ok: true, index: payload as DocumentIndexResult };
+}
+
+export async function searchCollection(
+  collectionId: string,
+  query: string,
+  topK: number = 5,
+): Promise<
+  | { ok: true; search: SearchResult }
+  | { ok: false; error: ApiClientError }
+> {
+  const queryError = validateSearchQueryInput(query);
+  if (queryError) {
+    return { ok: false, error: { message: queryError, status: 422 } };
+  }
+  if (!validateSearchTopK(topK)) {
+    return {
+      ok: false,
+      error: { message: "top_k must be 3, 5, or 10.", status: 422 },
+    };
+  }
+
+  const trimmedQuery = query.trim();
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/search`,
+    {
+      method: "POST",
+      body: JSON.stringify({ query: trimmedQuery, top_k: topK }),
+    },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await result.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: { message: "The API returned invalid JSON after search." },
+    };
+  }
+
+  const parsed = parseSearchResponse(payload);
+  if (!parsed.ok) {
+    return { ok: false, error: { message: parsed.error } };
+  }
+
+  return { ok: true, search: parsed.result };
 }
 
 export async function fetchDocuments(
