@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 78 passed, 11 deselected
-uv run pytest -m integration     # integration: 11 passed, 78 deselected
+uv run pytest                    # unit: 89 passed, 11 deselected
+uv run pytest -m integration     # integration: 11 passed, 89 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -190,6 +190,24 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - PDF text budget enforced **while** reading pages (stops early; does not build full document text before truncating). Incremental cap does not guarantee a strict memory bound on a single malicious page with huge extracted text.
 - Markdown uses `normalize_markdown_text` (fenced code blocks unchanged; nested list indent preserved).
 - `EncryptedDocumentError` for password-protected PDFs; page-count / encryption metadata failures map to `CorruptedDocumentError`.
+
+## Phase 2D.3b — Document chunking (complete)
+
+- **`ai_knowledge_hub_api.documents.chunking`** — `chunk_extraction_result(extraction, config=...)` turns `ExtractionResult` into ordered `TextChunk` records (`chunk_index`, `text`, `source_kind`, `page_numbers`, `character_count`).
+- Structure-aware **character** sizing (`target_characters`, `max_characters`, `overlap_characters`, `max_chunks`); sizes are **not** embedding token counts.
+- PDF: page-local chunks (no cross-page mixing); plain/Markdown: paragraph, heading, sentence, then safe hard splits; Markdown preserves fenced code where possible.
+- Raises `ChunkingConfigurationError` / `ChunkingLimitExceededError` on invalid settings or incomplete processing when `max_chunks` is exceeded.
+- Not invoked on upload; no DB/embeddings.
+
+### Usage (library)
+
+```python
+from ai_knowledge_hub_api.documents.extraction import extract_document_text
+from ai_knowledge_hub_api.documents.chunking import chunk_extraction_result
+
+extraction = extract_document_text(data, filename="notes.md")
+chunks = chunk_extraction_result(extraction)
+```
 
 ## Recommended next steps
 
