@@ -7,11 +7,15 @@ from pypdf.errors import PdfReadError
 from ai_knowledge_hub_api.documents.extraction.errors import (
     CorruptedDocumentError,
     EmptyExtractionError,
+    EncryptedDocumentError,
     ExtractionLimitExceededError,
     InvalidTextEncodingError,
     UnsupportedExtractionFormatError,
 )
-from ai_knowledge_hub_api.documents.extraction.normalize import normalize_extracted_text
+from ai_knowledge_hub_api.documents.extraction.normalize import (
+    normalize_extracted_text,
+    normalize_markdown_text,
+)
 from ai_knowledge_hub_api.documents.extraction.types import (
     ExtractedPage,
     ExtractionLimits,
@@ -20,6 +24,7 @@ from ai_knowledge_hub_api.documents.extraction.types import (
 )
 
 _ALLOWED_EXTENSIONS = frozenset({".pdf", ".txt", ".md"})
+_PAGE_JOIN = "\n\n"
 
 
 def _extension_from_filename(filename: str | None) -> str:
@@ -36,10 +41,50 @@ def _decode_utf8_text(content: bytes) -> str:
         raise InvalidTextEncodingError("Text document must be valid UTF-8") from exc
 
 
+def _open_pdf_reader(content: bytes) -> PdfReader:
+    try:
+        reader = PdfReader(BytesIO(content), strict=False)
+    except PdfReadError as exc:
+        raise CorruptedDocumentError("PDF file is corrupted or unreadable") from exc
+    except Exception as exc:
+        raise CorruptedDocumentError("PDF file is corrupted or unreadable") from exc
+
+    try:
+        is_encrypted = reader.is_encrypted
+    except Exception as exc:
+        raise CorruptedDocumentError(
+            "PDF encryption metadata could not be read"
+        ) from exc
+
+    if is_encrypted:
+        raise EncryptedDocumentError("PDF is encrypted or password-protected")
+
+    return reader
+
+
+def _pdf_total_page_count(reader: PdfReader) -> int:
+    try:
+        page_count = len(reader.pages)
+    except Exception as exc:
+        raise CorruptedDocumentError("PDF page count could not be determined") from exc
+    return page_count
+
+
+def _extract_pdf_page_text(reader: PdfReader, page_index: int) -> str:
+    try:
+        page = reader.pages[page_index]
+        return page.extract_text() or ""
+    except Exception as exc:
+        raise CorruptedDocumentError(
+            f"Failed to read PDF page {page_index + 1}"
+        ) from exc
+
+
 def _apply_character_limit(
     pages: list[ExtractedPage],
     *,
     max_characters: int,
+    normalize_joined: bool = True,
 ) -> tuple[tuple[ExtractedPage, ...], str, bool]:
     truncated = False
     limited_pages: list[ExtractedPage] = []
@@ -50,6 +95,11 @@ def _apply_character_limit(
         if remaining <= 0:
             truncated = True
             break
+        if full_parts:
+            if len(_PAGE_JOIN) > remaining:
+                truncated = True
+                break
+            remaining -= len(_PAGE_JOIN)
         page_text = page.text
         if len(page_text) > remaining:
             page_text = page_text[:remaining]
@@ -63,7 +113,9 @@ def _apply_character_limit(
         if truncated:
             break
 
-    full_text = normalize_extracted_text("\n\n".join(full_parts))
+    full_text = _PAGE_JOIN.join(full_parts)
+    if normalize_joined:
+        full_text = normalize_extracted_text(full_text)
     if len(full_text) > max_characters:
         full_text = full_text[:max_characters]
         truncated = True
@@ -72,45 +124,59 @@ def _apply_character_limit(
 
 
 def _extract_pdf(content: bytes, limits: ExtractionLimits) -> ExtractionResult:
-    try:
-        reader = PdfReader(BytesIO(content), strict=False)
-    except PdfReadError as exc:
-        raise CorruptedDocumentError("PDF file is corrupted or unreadable") from exc
-    except Exception as exc:
-        raise CorruptedDocumentError("PDF file is corrupted or unreadable") from exc
-
-    total_pages = len(reader.pages)
+    reader = _open_pdf_reader(content)
+    total_pages = _pdf_total_page_count(reader)
     if total_pages == 0:
         raise EmptyExtractionError("PDF contains no pages")
 
     pages_to_process = min(total_pages, limits.max_pdf_pages)
     truncated_pages = total_pages > limits.max_pdf_pages
+    char_budget = limits.max_extracted_characters
+    truncated_chars = False
 
-    raw_pages: list[ExtractedPage] = []
+    kept_pages: list[ExtractedPage] = []
+    text_parts: list[str] = []
+    saw_extractable_text = False
+
     for index in range(pages_to_process):
-        try:
-            page = reader.pages[index]
-            extracted = page.extract_text() or ""
-        except Exception as exc:
-            raise CorruptedDocumentError(
-                f"Failed to read PDF page {index + 1}"
-            ) from exc
-        raw_pages.append(
-            ExtractedPage(
-                page_number=index + 1,
-                text=normalize_extracted_text(extracted),
-            )
-        )
+        if char_budget <= 0:
+            truncated_chars = True
+            break
 
-    if not any(page.text.strip() for page in raw_pages):
+        if text_parts:
+            if len(_PAGE_JOIN) > char_budget:
+                truncated_chars = True
+                break
+            char_budget -= len(_PAGE_JOIN)
+
+        extracted = _extract_pdf_page_text(reader, index)
+        page_text = normalize_extracted_text(extracted)
+        if page_text.strip():
+            saw_extractable_text = True
+
+        if len(page_text) > char_budget:
+            page_text = page_text[:char_budget]
+            truncated_chars = True
+
+        kept_pages.append(
+            ExtractedPage(page_number=index + 1, text=page_text),
+        )
+        text_parts.append(page_text)
+        char_budget -= len(page_text)
+
+        if truncated_chars:
+            break
+
+    if not saw_extractable_text:
         raise EmptyExtractionError(
             "No extractable text found in PDF (it may be image-only or scanned)"
         )
 
-    limited_pages, full_text, truncated_chars = _apply_character_limit(
-        raw_pages,
-        max_characters=limits.max_extracted_characters,
-    )
+    full_text = _PAGE_JOIN.join(text_parts)
+    if len(full_text) > limits.max_extracted_characters:
+        full_text = full_text[: limits.max_extracted_characters]
+        truncated_chars = True
+
     if not full_text.strip():
         raise EmptyExtractionError(
             "No extractable text found in PDF (it may be image-only or scanned)"
@@ -118,7 +184,7 @@ def _extract_pdf(content: bytes, limits: ExtractionLimits) -> ExtractionResult:
 
     return ExtractionResult(
         source_kind="pdf",
-        pages=limited_pages,
+        pages=tuple(kept_pages),
         text=full_text,
         page_count=total_pages,
         truncated=truncated_pages or truncated_chars,
@@ -132,7 +198,10 @@ def _extract_plain_text(
     limits: ExtractionLimits,
 ) -> ExtractionResult:
     decoded = _decode_utf8_text(content)
-    normalized = normalize_extracted_text(decoded)
+    if source_kind == "markdown":
+        normalized = normalize_markdown_text(decoded)
+    else:
+        normalized = normalize_extracted_text(decoded)
     if not normalized:
         raise EmptyExtractionError("Document contains no extractable text")
 
@@ -140,6 +209,7 @@ def _extract_plain_text(
     limited_pages, full_text, truncated = _apply_character_limit(
         [page],
         max_characters=limits.max_extracted_characters,
+        normalize_joined=source_kind != "markdown",
     )
     if not full_text.strip():
         raise EmptyExtractionError("Document contains no extractable text")

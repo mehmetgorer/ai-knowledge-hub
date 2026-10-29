@@ -3,13 +3,21 @@ import pytest
 from ai_knowledge_hub_api.documents.extraction import (
     CorruptedDocumentError,
     EmptyExtractionError,
+    EncryptedDocumentError,
     ExtractionLimits,
     InvalidTextEncodingError,
     UnsupportedExtractionFormatError,
     extract_document_text,
 )
-from ai_knowledge_hub_api.documents.extraction.normalize import normalize_extracted_text
-from tests.fixtures.extraction.pdf_builders import blank_pdf_page, pdf_with_pages
+from ai_knowledge_hub_api.documents.extraction.normalize import (
+    normalize_extracted_text,
+    normalize_markdown_text,
+)
+from tests.fixtures.extraction.pdf_builders import (
+    blank_pdf_page,
+    encrypted_pdf_bytes,
+    pdf_with_pages,
+)
 
 
 def test_extract_utf8_txt() -> None:
@@ -97,3 +105,67 @@ def test_extract_pdf_page_limit() -> None:
 def test_unsupported_extension_raises() -> None:
     with pytest.raises(UnsupportedExtractionFormatError):
         extract_document_text(b"data", filename="file.bin")
+
+
+def test_normalize_markdown_preserves_fenced_python_and_nested_lists() -> None:
+    raw = """# Title
+
+Intro with  extra   spaces.
+
+- outer
+  - nested item
+
+```python
+def greet(name: str) -> str:
+    return f"hello {name}"
+```
+"""
+    normalized = normalize_markdown_text(raw)
+    assert "Intro with extra spaces." in normalized
+    assert "  - nested item" in normalized
+    assert "def greet(name: str) -> str:" in normalized
+    assert '    return f"hello {name}"' in normalized
+
+
+def test_extract_markdown_python_fence_remains_valid() -> None:
+    content = b"""# API
+
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+```
+"""
+    result = extract_document_text(content, filename="guide.md")
+    assert "def add(a: int, b: int) -> int:" in result.text
+    assert "    return a + b" in result.text
+
+
+def test_pdf_character_limit_stops_processing_later_pages() -> None:
+    labels = [f"{'word ' * 25}page {index}" for index in range(1, 8)]
+    pdf_bytes = pdf_with_pages(labels)
+    limits = ExtractionLimits(max_pdf_pages=7, max_extracted_characters=90)
+    result = extract_document_text(pdf_bytes, filename="big.pdf", limits=limits)
+    assert result.truncated is True
+    assert len(result.pages) < 7
+    assert len(result.text) <= 90
+    assert "page 7" not in result.text
+
+
+def test_encrypted_pdf_raises_typed_error() -> None:
+    with pytest.raises(EncryptedDocumentError):
+        extract_document_text(encrypted_pdf_bytes(), filename="locked.pdf")
+
+
+def test_pdf_page_count_failure_is_corrupted_document() -> None:
+    from unittest.mock import MagicMock, patch
+
+    mock_reader = MagicMock()
+    mock_reader.is_encrypted = False
+    mock_reader.pages.__len__.side_effect = RuntimeError("broken page tree")
+
+    with patch(
+        "ai_knowledge_hub_api.documents.extraction.service._open_pdf_reader",
+        return_value=mock_reader,
+    ):
+        with pytest.raises(CorruptedDocumentError, match="page count"):
+            extract_document_text(b"%PDF-1.4\n", filename="bad-pages.pdf")

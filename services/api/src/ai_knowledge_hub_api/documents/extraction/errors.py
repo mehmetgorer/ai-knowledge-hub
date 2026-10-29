@@ -23,6 +23,10 @@ class CorruptedDocumentError(DocumentExtractionError):
     code = "corrupted_document"
 
 
+class EncryptedDocumentError(DocumentExtractionError):
+    code = "encrypted_document"
+
+
 class EmptyExtractionError(DocumentExtractionError):
     code = "empty_extraction"
 

@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 73 passed, 11 deselected
-uv run pytest -m integration     # integration: 11 passed, 73 deselected
+uv run pytest                    # unit: 78 passed, 11 deselected
+uv run pytest -m integration     # integration: 11 passed, 78 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -166,7 +166,7 @@ Manual browser upload, collection switch, and F5 persistence: **not verified in 
 - **PDF:** pypdf page text; per-page `ExtractedPage`; `page_count` = total PDF pages; `truncated` when page or character limits apply.
 - **TXT / MD:** UTF-8 decode; Markdown structure preserved (headings, lists); no rendering.
 - **Normalization:** `normalize_extracted_text` trims lines, collapses inline spaces, limits blank-line runs without merging paragraphs.
-- **Errors (typed, no content logged):** `UnsupportedExtractionFormatError`, `InvalidTextEncodingError`, `CorruptedDocumentError`, `EmptyExtractionError` (image-only / no text), `ExtractionLimitExceededError` (invalid limit config).
+- **Errors (typed, no content logged):** `UnsupportedExtractionFormatError`, `InvalidTextEncodingError`, `CorruptedDocumentError`, `EncryptedDocumentError`, `EmptyExtractionError` (image-only / no text), `ExtractionLimitExceededError` (invalid limit config).
 - **Defaults:** `ExtractionLimits(max_pdf_pages=500, max_extracted_characters=512_000)`.
 - **Not wired** to upload pipeline, API routes, or `Document.status` yet.
 
@@ -184,6 +184,12 @@ result = extract_document_text(pdf_bytes, filename="report.pdf")
 - No OCR; scanned/image-only PDFs raise `EmptyExtractionError`.
 - Extraction quality depends on pypdf text layer support.
 - Character cap may truncate long documents; PDF page cap skips pages beyond the limit.
+
+## Phase 2D.3a.1 — Extraction hardening (complete)
+
+- PDF text budget enforced **while** reading pages (stops early; does not build full document text before truncating). Incremental cap does not guarantee a strict memory bound on a single malicious page with huge extracted text.
+- Markdown uses `normalize_markdown_text` (fenced code blocks unchanged; nested list indent preserved).
+- `EncryptedDocumentError` for password-protected PDFs; page-count / encryption metadata failures map to `CorruptedDocumentError`.
 
 ## Recommended next steps
 

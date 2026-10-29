@@ -5,6 +5,15 @@ from io import BytesIO
 from pypdf import PdfWriter
 
 
+def encrypted_pdf_bytes(user_password: str = "test-password") -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.encrypt(user_password)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
 def pdf_with_pages(page_labels: list[str]) -> bytes:
     """Build a minimal PDF with extractable text on each page."""
     if not page_labels:
