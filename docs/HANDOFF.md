@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 62 passed, 11 deselected
-uv run pytest -m integration     # integration: 11 passed, 62 deselected
+uv run pytest                    # unit: 73 passed, 11 deselected
+uv run pytest -m integration     # integration: 11 passed, 73 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -123,7 +123,7 @@ Apply on local Postgres: `uv run alembic upgrade head` (head = `0002_collections
 
 ## Explicitly not in scope yet
 
-- Document parsing, chunking, embeddings, RAG/LLM.
+- Automatic extraction on upload, chunking, embeddings, RAG/LLM.
 - CI jobs for Docker / PostgreSQL integration tests.
 
 ## Phase 2D.1 — Document upload backend (complete)
@@ -159,6 +159,31 @@ Manual browser upload, collection switch, and F5 persistence: **not verified in 
 - Document fetch state is keyed by `collectionId` on loading / ready / error (removed `loadedForCollectionId` pending heuristic that hid errors).
 - `documentsViewForSelection` derives UI from the selected collection; stale responses ignored via monotonic `documentsRequestIdRef`.
 - Retry and post-upload refresh unchanged in behavior.
+
+## Phase 2D.3a — Document text extraction (complete)
+
+- **`ai_knowledge_hub_api.documents.extraction`** — standalone service: `extract_document_text(content, filename=..., limits=...)`.
+- **PDF:** pypdf page text; per-page `ExtractedPage`; `page_count` = total PDF pages; `truncated` when page or character limits apply.
+- **TXT / MD:** UTF-8 decode; Markdown structure preserved (headings, lists); no rendering.
+- **Normalization:** `normalize_extracted_text` trims lines, collapses inline spaces, limits blank-line runs without merging paragraphs.
+- **Errors (typed, no content logged):** `UnsupportedExtractionFormatError`, `InvalidTextEncodingError`, `CorruptedDocumentError`, `EmptyExtractionError` (image-only / no text), `ExtractionLimitExceededError` (invalid limit config).
+- **Defaults:** `ExtractionLimits(max_pdf_pages=500, max_extracted_characters=512_000)`.
+- **Not wired** to upload pipeline, API routes, or `Document.status` yet.
+
+### Usage (library)
+
+```python
+from ai_knowledge_hub_api.documents.extraction import extract_document_text
+
+result = extract_document_text(pdf_bytes, filename="report.pdf")
+# result.text, result.pages, result.source_kind, result.truncated
+```
+
+### Limitations
+
+- No OCR; scanned/image-only PDFs raise `EmptyExtractionError`.
+- Extraction quality depends on pypdf text layer support.
+- Character cap may truncate long documents; PDF page cap skips pages beyond the limit.
 
 ## Recommended next steps
 
