@@ -1,0 +1,110 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1205 >>
+stream
+BT /F1 15 Tf 1 0 0 1 45 784 Tm (PAGE 1 / 4 - PROJECT OVERVIEW) Tj ET
+BT /F1 9 Tf 1 0 0 1 45 751 Tm (Controlled test document - text selectable, 4 pages) Tj ET
+BT /F1 12 Tf 1 0 0 1 45 715 Tm (AI KNOWLEDGE HUB - CONTROLLED PDF EVALUATION) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 679 Tm (Document: Northstar Data Platform \(fictional project\)) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 643 Tm (Northstar Data Platform manages sales, inventory, and customer records.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 607 Tm (The project was started in 2024.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 571 Tm (The backend is built with Python and FastAPI.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 535 Tm (The frontend is built with React.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 499 Tm (The main relational database is PostgreSQL.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 463 Tm (The system collects data from several internal business applications.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 427 Tm (Business users can review consolidated reports in one interface.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 391 Tm (All organizations, dates, and specifications here are fictional.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 355 Tm (Each page deliberately contains facts for citation and page tests.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 1187 >>
+stream
+BT /F1 15 Tf 1 0 0 1 45 784 Tm (PAGE 2 / 4 - SYSTEM ARCHITECTURE) Tj ET
+BT /F1 9 Tf 1 0 0 1 45 751 Tm (Controlled test document - text selectable, 4 pages) Tj ET
+BT /F1 12 Tf 1 0 0 1 45 715 Tm (The platform has three layers: user interface, API, and database.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 679 Tm (The React user interface displays reports and lets staff manage records.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 643 Tm (The FastAPI service processes HTTP requests and business rules.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 607 Tm (PostgreSQL stores customers, orders, products, and inventory entries.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 571 Tm (Customer and order records are connected using customer_id.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 535 Tm (JWT tokens are used to authenticate registered users.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 499 Tm (Redis is NOT used in the current architecture.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 463 Tm (No application-level response cache has been implemented yet.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 427 Tm (Reports are requested through authenticated API endpoints.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 391 Tm (The platform does not currently offer a public developer API.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 1118 >>
+stream
+BT /F1 15 Tf 1 0 0 1 45 784 Tm (PAGE 3 / 4 - PERFORMANCE AND SECURITY) Tj ET
+BT /F1 9 Tf 1 0 0 1 45 751 Tm (Controlled test document - text selectable, 4 pages) Tj ET
+BT /F1 12 Tf 1 0 0 1 45 715 Tm (The target API response time is less than 200 milliseconds.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 679 Tm (The platform is designed for 150 concurrent active users.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 643 Tm (Authentication uses JSON Web Tokens \(JWT\).) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 607 Tm (Passwords are never stored in plain text.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 571 Tm (Database backups run every day at 02:30 UTC.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 535 Tm (Database backup copies are retained for 14 days.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 499 Tm (Backup access is restricted to the operations team.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 463 Tm (Users can view only the records allowed by their permissions.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 427 Tm (An audit log records important administrative changes.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 391 Tm (Performance and availability figures are design targets, not test results.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 1152 >>
+stream
+BT /F1 15 Tf 1 0 0 1 45 784 Tm (PAGE 4 / 4 - RELEASE AND ROADMAP) Tj ET
+BT /F1 9 Tf 1 0 0 1 45 751 Tm (Controlled test document - text selectable, 4 pages) Tj ET
+BT /F1 12 Tf 1 0 0 1 45 715 Tm (The first test deployment took place on March 15, 2025.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 679 Tm (The application is packaged and operated with Docker containers.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 643 Tm (The next release plans to add CSV export.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 607 Tm (Advanced reporting and email notifications are also planned.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 571 Tm (No decision has been made about a mobile application.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 535 Tm (The cloud hosting provider is not specified in this document.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 499 Tm (The product has no announced public launch date.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 463 Tm (All information in this file is for controlled RAG testing.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 427 Tm (Expected behavior: answer only questions supported by these pages.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 45 391 Tm (Questions about unknown provider names should receive abstention.) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000133 00000 n 
+0000000260 00000 n 
+0000001516 00000 n 
+0000001643 00000 n 
+0000002881 00000 n 
+0000003008 00000 n 
+0000004177 00000 n 
+0000004305 00000 n 
+0000005509 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+5607
+%%EOF
