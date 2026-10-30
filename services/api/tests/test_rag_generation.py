@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from ai_knowledge_hub_api.rag import validation_codes as codes
-from ai_knowledge_hub_api.rag.errors import RagGroundingError
+from ai_knowledge_hub_api.rag.errors import RagFailClosedAbstention, RagGroundingError
 from ai_knowledge_hub_api.rag.generation import complete_and_validate_grounded_answer
 from ai_knowledge_hub_api.rag.ollama import OllamaChatRequest
 
@@ -112,7 +112,7 @@ def test_conflicting_insufficient_flag_with_citations_rejected() -> None:
             evidence_sufficient=False,
         )
 
-    with pytest.raises(RagGroundingError) as exc_info:
+    with pytest.raises(RagFailClosedAbstention) as exc_info:
         complete_and_validate_grounded_answer(
             generate,
             _chat_request(),

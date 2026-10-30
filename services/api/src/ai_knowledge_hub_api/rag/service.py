@@ -8,15 +8,20 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.config import Settings, get_settings
+from ai_knowledge_hub_api.rag import validation_codes as codes
 from ai_knowledge_hub_api.rag.abstention import build_insufficient_sources_answer
 from ai_knowledge_hub_api.rag.config import RagConfig
-from ai_knowledge_hub_api.rag.errors import RagFailClosedAbstention
+from ai_knowledge_hub_api.rag.errors import RagFailClosedAbstention, RagGroundingError
 from ai_knowledge_hub_api.rag.evidence import EvidenceSource, build_evidence_context
 from ai_knowledge_hub_api.rag.generation import complete_and_validate_grounded_answer
 from ai_knowledge_hub_api.rag.ollama import (
     OllamaChatClient,
     OllamaChatRequest,
     get_default_ollama_client,
+)
+from ai_knowledge_hub_api.rag.outcome import (
+    AskGenerationOutcome,
+    AskGenerationOutcomeKind,
 )
 from ai_knowledge_hub_api.rag.prompts import (
     build_system_instructions,
@@ -58,14 +63,14 @@ class AskCollectionResult:
     grounded: bool
 
 
-def _fail_closed_abstention_result(
+def _safe_abstention_result(
     question: str,
     model_name: str,
     *,
     log_code: str | None = None,
 ) -> AskCollectionResult:
     if log_code is not None:
-        logger.warning("RAG fail-closed abstention code=%s", log_code)
+        logger.warning("RAG safe abstention code=%s", log_code)
     return AskCollectionResult(
         answer=build_insufficient_sources_answer(question),
         sources=(),
@@ -103,7 +108,7 @@ def _sources_for_citations(
     return tuple(result)
 
 
-def ask_collection_question(
+def resolve_ask_generation_outcome(
     db: Session,
     *,
     collection_id: uuid.UUID,
@@ -115,7 +120,7 @@ def ask_collection_question(
     embed_query: EmbedQueryFn | None = None,
     ollama_client: OllamaChatClient | None = None,
     generate_json: GenerateJsonCompletionFn | None = None,
-) -> AskCollectionResult:
+) -> AskGenerationOutcome:
     resolved_settings = settings or get_settings()
     resolved_rag = rag_config or DEFAULT_RAG_CONFIG
     effective_top_k = min(top_k, resolved_rag.max_evidence_passages)
@@ -134,14 +139,20 @@ def ask_collection_question(
 
     if not evidence:
         db.commit()
-        return _fail_closed_abstention_result(question, model_name)
+        return AskGenerationOutcome(
+            kind=AskGenerationOutcomeKind.SAFE_ABSTENTION,
+            result=_safe_abstention_result(question, model_name),
+        )
 
     if should_abstain_for_weak_retrieval(
         evidence,
         weak_best_distance_above=resolved_rag.weak_retrieval_best_distance_above,
     ):
         db.commit()
-        return _fail_closed_abstention_result(question, model_name)
+        return AskGenerationOutcome(
+            kind=AskGenerationOutcomeKind.SAFE_ABSTENTION,
+            result=_safe_abstention_result(question, model_name),
+        )
 
     db.commit()
     if db.in_transaction():
@@ -178,21 +189,68 @@ def ask_collection_question(
             question=question,
         )
     except RagFailClosedAbstention as exc:
-        return _fail_closed_abstention_result(
-            question,
-            model_name,
-            log_code=exc.code,
+        return AskGenerationOutcome(
+            kind=AskGenerationOutcomeKind.SAFE_ABSTENTION,
+            result=_safe_abstention_result(
+                question,
+                model_name,
+                log_code=exc.code,
+            ),
         )
+    except RagGroundingError as exc:
+        if exc.code in codes.SAFE_ABSTENTION_CODES:
+            return AskGenerationOutcome(
+                kind=AskGenerationOutcomeKind.SAFE_ABSTENTION,
+                result=_safe_abstention_result(
+                    question,
+                    model_name,
+                    log_code=exc.code,
+                ),
+            )
+        raise
 
     if not validated.grounded:
-        return _fail_closed_abstention_result(question, model_name)
+        return AskGenerationOutcome(
+            kind=AskGenerationOutcomeKind.SAFE_ABSTENTION,
+            result=_safe_abstention_result(question, model_name),
+        )
 
-    return AskCollectionResult(
-        answer=validated.answer,
-        sources=_sources_for_citations(evidence, validated.cited_source_ids),
-        model=model_name,
-        grounded=True,
+    return AskGenerationOutcome(
+        kind=AskGenerationOutcomeKind.GROUNDED,
+        result=AskCollectionResult(
+            answer=validated.answer,
+            sources=_sources_for_citations(evidence, validated.cited_source_ids),
+            model=model_name,
+            grounded=True,
+        ),
     )
+
+
+def ask_collection_question(
+    db: Session,
+    *,
+    collection_id: uuid.UUID,
+    owner_subject: str,
+    question: str,
+    top_k: int,
+    settings: Settings | None = None,
+    rag_config: RagConfig | None = None,
+    embed_query: EmbedQueryFn | None = None,
+    ollama_client: OllamaChatClient | None = None,
+    generate_json: GenerateJsonCompletionFn | None = None,
+) -> AskCollectionResult:
+    return resolve_ask_generation_outcome(
+        db,
+        collection_id=collection_id,
+        owner_subject=owner_subject,
+        question=question,
+        top_k=top_k,
+        settings=settings,
+        rag_config=rag_config,
+        embed_query=embed_query,
+        ollama_client=ollama_client,
+        generate_json=generate_json,
+    ).result
 
 
 def apply_validated_answer_for_tests(

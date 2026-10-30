@@ -841,7 +841,7 @@ def test_ask_invalid_grounding_raises(
 
 
 @pytest.mark.integration
-def test_ask_rejects_insufficient_flag_with_citations(
+def test_ask_insufficient_flag_with_citations_returns_safe_abstention(
     migrated_ask_database: str,
 ) -> None:
     del migrated_ask_database
@@ -870,14 +870,11 @@ def test_ask_rejects_insufficient_flag_with_citations(
             embedding=_basis_vector(0),
         )
         session.commit()
-        with (
-            patch(
-                "ai_knowledge_hub_api.search.service.embed_search_query",
-                side_effect=_mock_embed_query,
-            ),
-            pytest.raises(RagGroundingError),
+        with patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
         ):
-            ask_collection_question(
+            result = ask_collection_question(
                 session,
                 collection_id=collection.id,
                 owner_subject="owner-a",
@@ -885,6 +882,11 @@ def test_ask_rejects_insufficient_flag_with_citations(
                 top_k=5,
                 generate_json=bad_llm,
             )
+
+    assert result.grounded is False
+    assert result.sources == ()
+    assert "Still citing" not in result.answer
+    assert "No sufficient sources" in result.answer
 
 
 @pytest.mark.integration
@@ -1145,3 +1147,69 @@ def test_ask_fail_closed_hides_invented_formula_after_repair(
     assert result.grounded is False
     assert result.sources == ()
     assert "dL/dw" not in result.answer
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_ask_unsupported_formula_http_200_not_422(
+    auth_env: None,
+    key_pair: Ed25519KeyPair,
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+    passage = "Neural networks use layers and backpropagation."
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="Formula HTTP")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="machine-learning.txt",
+            chunk_index=0,
+            text=passage,
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        collection_id = str(collection.id)
+
+    def llm(_request: OllamaChatRequest) -> str:
+        return json.dumps(
+            {
+                "answer": "Formül: dL/dw = error · input [S1].",
+                "cited_source_ids": ["S1"],
+                "evidence_sufficient": True,
+                "support_quotes": [
+                    {"source_id": "S1", "quote": "Neural networks use layers"},
+                ],
+            },
+        )
+
+    with (
+        patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
+        ),
+        patch("ai_knowledge_hub_api.rag.service.get_default_ollama_client") as mock,
+    ):
+        mock.return_value.complete_json = llm
+        async with _client_for_subject(key_pair, "owner-a") as client:
+            response = await client.post(
+                f"/collections/{collection_id}/ask",
+                json={
+                    "question": (
+                        "Backpropagation işleminde zincir kuralının "
+                        "matematiksel formülü nedir?"
+                    ),
+                    "top_k": 5,
+                },
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["grounded"] is False
+    assert body["sources"] == []
+    assert "dL/dw" not in body["answer"]
+    assert "yeterli kaynak" in body["answer"]

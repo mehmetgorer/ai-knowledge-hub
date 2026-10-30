@@ -62,7 +62,7 @@ def complete_and_validate_grounded_answer(
             if attempt_index == 0:
                 first_failure_code = exc.code
                 continue
-            if exc.code in codes.FAIL_CLOSED_ABSTENTION_CODES:
+            if exc.code in codes.SAFE_ABSTENTION_CODES:
                 raise RagFailClosedAbstention(code=exc.code) from exc
             raise
         except RagOllamaResponseError as exc:
@@ -78,7 +78,7 @@ def complete_and_validate_grounded_answer(
             )
         return validated
 
-    if first_failure_code in codes.FAIL_CLOSED_ABSTENTION_CODES:
+    if first_failure_code in codes.SAFE_ABSTENTION_CODES:
         raise RagFailClosedAbstention(code=first_failure_code)
 
     raise RagGroundingError(

@@ -23,12 +23,18 @@ UNSUPPORTED_FORMULA = "unsupported_formula"
 UNSUPPORTED_DATE = "unsupported_date"
 UNSUPPORTED_NUMERIC = "unsupported_numeric"
 
-FAIL_CLOSED_ABSTENTION_CODES = frozenset(
+# Unsupported or insufficient verified support → HTTP 200 fail-closed abstention.
+SAFE_ABSTENTION_CODES = frozenset(
     {
         MISSING_SUPPORT_QUOTE_FOR_SOURCE,
         QUOTE_NOT_IN_SOURCE,
         UNSUPPORTED_FORMULA,
         UNSUPPORTED_DATE,
         UNSUPPORTED_NUMERIC,
+        INSUFFICIENT_WITH_CITATIONS,
+        INSUFFICIENT_WITH_SUPPORT_QUOTES,
     }
 )
+
+# Backward alias for generation module.
+FAIL_CLOSED_ABSTENTION_CODES = SAFE_ABSTENTION_CODES

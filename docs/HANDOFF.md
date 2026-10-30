@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 164 passed, 83 deselected
-uv run pytest -m integration     # integration: 82 passed, 165 deselected
+uv run pytest                    # unit: 165 passed, 84 deselected
+uv run pytest -m integration     # integration: 83 passed, 166 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -400,6 +400,14 @@ POST /collections/{collection_id}/ask
    - **Chain rule formula (TR):** expect safe Turkish abstention — **no fabricated formula** in `answer`.
    - **Titanic date (TR):** expect safe abstention — **no 1912/date** in `answer`.
 4. Inspect API logs for `code=` only (no question/passage/answer bodies).
+
+## Phase 4A.4 — Normalize fail-closed Ask responses (complete)
+
+- **Problem:** Some Phase 4A.3b fail-closed paths still surfaced as **HTTP 422** (`Answer could not be verified as grounded`), showing a red error in Ask AI instead of a normal abstention card.
+- **Fix:** Explicit **`AskGenerationOutcome`** (`grounded` | `safe_abstention` | technical exception). Expanded **`SAFE_ABSTENTION_CODES`** (unsupported formula/date/numeric, quote mismatch, insufficient flag conflicts, etc.) map to **HTTP 200** with `grounded=false`, safe server `answer`, `sources=[]`.
+- **Still 422/503:** Structural citation/JSON protocol failures after repair; Ollama offline; embedding/retrieval errors; invalid request.
+- Frontend unchanged: successful **200** + `grounded=false` already renders the normal Answer card (not the error state).
+- Tests: **`test_rag_outcome.py`**, **`test_ask_unsupported_formula_http_200_not_422`** in **`test_ask_integration.py`**.
 
 ## Recommended next steps
 
