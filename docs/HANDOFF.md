@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 157 passed, 81 deselected
-uv run pytest -m integration     # integration: 80 passed, 158 deselected
+uv run pytest                    # unit: 164 passed, 83 deselected
+uv run pytest -m integration     # integration: 82 passed, 165 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -382,6 +382,24 @@ POST /collections/{collection_id}/ask
 - **Pipeline:** **`complete_and_validate_grounded_answer`** (`rag/generation.py`) → parse (`parse_completion.py`) → validate with codes (`validation_codes.py`) → optional repair (`repair.py`). Server logs **`code=`** and attempt only (no questions, passages, prompts, or answers).
 - **`RagGroundingError.code`:** safe category for logs; API still returns generic **422** detail.
 - Tests: **`test_rag_generation.py`**, updated **`test_rag_validation.py`**, **`test_rag_reliability.py`** (schema in request body). CI uses mocked Ollama only — **live qwen3:1.7b not verified in CI** (manual re-test recommended after deploy).
+
+## Phase 4A.3b — Fail-closed RAG grounding (complete)
+
+- **Deterministic abstention:** whenever the pipeline decides the answer is not grounded (`evidence_sufficient=false`, no/weak evidence, or post-validation fail-closed), the API returns **`build_insufficient_sources_answer(question)`** — never the model’s `answer` text. `grounded=false`, `sources=[]`; response shape unchanged.
+- **Verbatim support quotes:** JSON schema adds required **`support_quotes`** (`{source_id, quote}`); each quote must be a substring of the retrieved chunk (≥8 chars). Invalid quotes → one repair attempt, then fail-closed abstention with logged codes (`quote_not_in_source`, etc.).
+- **Conservative heuristics (not semantic verification):** when `evidence_sufficient=true`, reject (then fail-closed after repair) if cited passages do not contain **years (1000–2099)**, **3+ digit numbers**, or **formula-like claims** when the question asks for a formula — codes `unsupported_date`, `unsupported_numeric`, `unsupported_formula`. Ordinary paraphrases without those signals still pass if citations and quotes validate.
+- **Limitation:** extra prose beyond quoted passages is **not** fully detected; quote + high-risk checks reduce hallucinated formulas/dates/numbers but do not eliminate all unsupported detail.
+- Tests: **`test_rag_fail_closed.py`**, extended **`test_ask_integration.py`**, updated generation/validation/reliability tests. CI: mocked Ollama only.
+
+### Manual evaluation (real `qwen3:1.7b`, local Ollama)
+
+1. `docker compose up -d`, `uv run alembic upgrade head`, API + web with `.env` configured; `ollama serve` + `ollama pull qwen3:1.7b`.
+2. Index fixtures containing `database.txt`, `machine-learning.txt` (no Titanic date, no chain-rule formula in ML chunk).
+3. Ask via dashboard or `POST /collections/{id}/ask`:
+   - **JOIN (TR):** expect `grounded=true`, inline `[S1]`, sources populated; answer should track cited passage (minor paraphrase OK).
+   - **Chain rule formula (TR):** expect safe Turkish abstention — **no fabricated formula** in `answer`.
+   - **Titanic date (TR):** expect safe abstention — **no 1912/date** in `answer`.
+4. Inspect API logs for `code=` only (no question/passage/answer bodies).
 
 ## Recommended next steps
 

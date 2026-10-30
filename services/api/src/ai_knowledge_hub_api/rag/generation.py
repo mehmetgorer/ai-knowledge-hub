@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from ai_knowledge_hub_api.rag import validation_codes as codes
 from ai_knowledge_hub_api.rag.errors import (
+    RagFailClosedAbstention,
     RagGroundingError,
     RagOllamaResponseError,
 )
@@ -27,6 +28,8 @@ def complete_and_validate_grounded_answer(
     chat_request: OllamaChatRequest,
     *,
     allowed_source_ids: frozenset[str],
+    source_texts: dict[str, str],
+    question: str,
 ) -> ValidatedAnswer:
     allowed_tuple = tuple(sorted(allowed_source_ids))
     first_failure_code: str | None = None
@@ -47,6 +50,8 @@ def complete_and_validate_grounded_answer(
             validated = validate_grounded_answer(
                 payload,
                 allowed_source_ids=allowed_source_ids,
+                source_texts=source_texts,
+                question=question,
             )
         except RagGroundingError as exc:
             logger.warning(
@@ -57,6 +62,8 @@ def complete_and_validate_grounded_answer(
             if attempt_index == 0:
                 first_failure_code = exc.code
                 continue
+            if exc.code in codes.FAIL_CLOSED_ABSTENTION_CODES:
+                raise RagFailClosedAbstention(code=exc.code) from exc
             raise
         except RagOllamaResponseError as exc:
             raise RagGroundingError(
@@ -70,6 +77,9 @@ def complete_and_validate_grounded_answer(
                 first_failure_code,
             )
         return validated
+
+    if first_failure_code in codes.FAIL_CLOSED_ABSTENTION_CODES:
+        raise RagFailClosedAbstention(code=first_failure_code)
 
     raise RagGroundingError(
         "Model response could not be verified",

@@ -49,7 +49,9 @@ def test_ollama_request_uses_temperature_zero_and_disables_thinking() -> None:
             "message": {
                 "content": (
                     '{"answer":"ok [S1]","cited_source_ids":["S1"],'
-                    '"evidence_sufficient":true}'
+                    '"evidence_sufficient":true,'
+                    '"support_quotes":[{"source_id":"S1",'
+                    '"quote":"evidence snippet long enough"}]}'
                 ),
             },
         }
@@ -79,4 +81,5 @@ def test_ollama_request_uses_temperature_zero_and_disables_thinking() -> None:
         "answer",
         "evidence_sufficient",
         "cited_source_ids",
+        "support_quotes",
     ]

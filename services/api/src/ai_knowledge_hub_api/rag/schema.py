@@ -9,7 +9,24 @@ GROUNDED_ANSWER_JSON_SCHEMA: dict[str, object] = {
             "type": "array",
             "items": {"type": "string", "minLength": 1},
         },
+        "support_quotes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "source_id": {"type": "string", "minLength": 1},
+                    "quote": {"type": "string", "minLength": 8},
+                },
+                "required": ["source_id", "quote"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["answer", "evidence_sufficient", "cited_source_ids"],
+    "required": [
+        "answer",
+        "evidence_sufficient",
+        "cited_source_ids",
+        "support_quotes",
+    ],
     "additionalProperties": False,
 }

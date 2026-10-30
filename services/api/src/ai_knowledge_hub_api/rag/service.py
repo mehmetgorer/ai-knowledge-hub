@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.config import Settings, get_settings
+from ai_knowledge_hub_api.rag.abstention import build_insufficient_sources_answer
 from ai_knowledge_hub_api.rag.config import RagConfig
+from ai_knowledge_hub_api.rag.errors import RagFailClosedAbstention
 from ai_knowledge_hub_api.rag.evidence import EvidenceSource, build_evidence_context
 from ai_knowledge_hub_api.rag.generation import complete_and_validate_grounded_answer
 from ai_knowledge_hub_api.rag.ollama import (
@@ -56,25 +58,24 @@ class AskCollectionResult:
     grounded: bool
 
 
-def _no_evidence_answer(question: str) -> str:
-    normalized = question.strip()
-    if any("\u0400" <= char <= "\u04ff" for char in normalized):
-        return (
-            "Seçili koleksiyonda bu soruyu yanıtlamak için yeterli kaynak bulunamadı."
-        )
-    if any("\u0600" <= char <= "\u06ff" for char in normalized):
-        return "لم أجد مصادر كافية في المجموعة المحددة للإجابة على هذا السؤال."
-    # Basic Turkish detection (common letters)
-    lower = normalized.casefold()
-    turkish_hints = ("ğ", "ı", "ş", "ç", "ö", "ü", " ve ", " bir ", " nedir")
-    if any(hint in lower for hint in turkish_hints):
-        return (
-            "Seçili koleksiyonda bu soruyu yanıtlamak için yeterli kaynak bulunamadı."
-        )
-    return (
-        "No sufficient sources were found in the selected collection to answer "
-        "this question."
+def _fail_closed_abstention_result(
+    question: str,
+    model_name: str,
+    *,
+    log_code: str | None = None,
+) -> AskCollectionResult:
+    if log_code is not None:
+        logger.warning("RAG fail-closed abstention code=%s", log_code)
+    return AskCollectionResult(
+        answer=build_insufficient_sources_answer(question),
+        sources=(),
+        model=model_name,
+        grounded=False,
     )
+
+
+def _source_texts(evidence: list[EvidenceSource]) -> dict[str, str]:
+    return {item.source_id: item.match.text for item in evidence}
 
 
 def _sources_for_citations(
@@ -133,24 +134,14 @@ def ask_collection_question(
 
     if not evidence:
         db.commit()
-        return AskCollectionResult(
-            answer=_no_evidence_answer(question),
-            sources=(),
-            model=model_name,
-            grounded=False,
-        )
+        return _fail_closed_abstention_result(question, model_name)
 
     if should_abstain_for_weak_retrieval(
         evidence,
         weak_best_distance_above=resolved_rag.weak_retrieval_best_distance_above,
     ):
         db.commit()
-        return AskCollectionResult(
-            answer=_no_evidence_answer(question),
-            sources=(),
-            model=model_name,
-            grounded=False,
-        )
+        return _fail_closed_abstention_result(question, model_name)
 
     db.commit()
     if db.in_transaction():
@@ -177,19 +168,24 @@ def ask_collection_question(
     generate_fn = generate_json or client.complete_json
 
     allowed = frozenset(item.source_id for item in evidence)
-    validated = complete_and_validate_grounded_answer(
-        generate_fn,
-        chat_request,
-        allowed_source_ids=allowed,
-    )
+    texts = _source_texts(evidence)
+    try:
+        validated = complete_and_validate_grounded_answer(
+            generate_fn,
+            chat_request,
+            allowed_source_ids=allowed,
+            source_texts=texts,
+            question=question,
+        )
+    except RagFailClosedAbstention as exc:
+        return _fail_closed_abstention_result(
+            question,
+            model_name,
+            log_code=exc.code,
+        )
 
     if not validated.grounded:
-        return AskCollectionResult(
-            answer=validated.answer,
-            sources=(),
-            model=model_name,
-            grounded=False,
-        )
+        return _fail_closed_abstention_result(question, model_name)
 
     return AskCollectionResult(
         answer=validated.answer,
@@ -202,10 +198,14 @@ def ask_collection_question(
 def apply_validated_answer_for_tests(
     payload: dict[str, object],
     evidence: list[EvidenceSource],
+    *,
+    question: str = "Example question?",
 ) -> ValidatedAnswer:
     """Expose validation for unit tests."""
     allowed = frozenset(item.source_id for item in evidence)
     return validate_grounded_answer(
         payload,
         allowed_source_ids=allowed,
+        source_texts=_source_texts(evidence),
+        question=question,
     )

@@ -11,6 +11,8 @@ from ai_knowledge_hub_api.rag.errors import RagGroundingError
 from ai_knowledge_hub_api.rag.generation import complete_and_validate_grounded_answer
 from ai_knowledge_hub_api.rag.ollama import OllamaChatRequest
 
+_SOURCE_SNIPPET = "SQL JOIN combines rows from two tables."
+
 
 def _chat_request() -> OllamaChatRequest:
     return OllamaChatRequest(
@@ -28,14 +30,28 @@ def _payload(
     answer: str,
     cited: list[str],
     evidence_sufficient: bool,
+    support_quotes: list[dict[str, str]] | None = None,
 ) -> str:
+    if support_quotes is None:
+        if evidence_sufficient and cited:
+            support_quotes = [
+                {"source_id": source_id, "quote": _SOURCE_SNIPPET}
+                for source_id in cited
+            ]
+        else:
+            support_quotes = []
     return json.dumps(
         {
             "answer": answer,
             "cited_source_ids": cited,
             "evidence_sufficient": evidence_sufficient,
+            "support_quotes": support_quotes,
         },
     )
+
+
+def _texts() -> dict[str, str]:
+    return {"S1": _SOURCE_SNIPPET}
 
 
 def test_realistic_join_answer_with_inline_citation() -> None:
@@ -55,6 +71,8 @@ def test_realistic_join_answer_with_inline_citation() -> None:
         generate,
         _chat_request(),
         allowed_source_ids=allowed,
+        source_texts=_texts(),
+        question="INNER JOIN ve LEFT JOIN farkı nedir?",
     )
     assert validated.grounded is True
     assert validated.cited_source_ids == ("S1",)
@@ -74,6 +92,8 @@ def test_missing_evidence_sufficient_rejected() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question="Q?",
         )
     assert exc_info.value.code == codes.MISSING_EVIDENCE_SUFFICIENT
     assert calls == 2
@@ -97,6 +117,8 @@ def test_conflicting_insufficient_flag_with_citations_rejected() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question="Q?",
         )
     assert exc_info.value.code == codes.INSUFFICIENT_WITH_CITATIONS
     assert calls == 2
@@ -127,6 +149,8 @@ def test_missing_inline_citation_triggers_repair_success() -> None:
         generate,
         _chat_request(),
         allowed_source_ids=allowed,
+        source_texts=_texts(),
+        question="JOIN?",
     )
     assert validated.grounded is True
     assert calls == 2
@@ -147,6 +171,8 @@ def test_missing_inline_citation_repair_still_invalid() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question="Q?",
         )
     assert exc_info.value.code == codes.MISSING_INLINE_CITATION
 
@@ -166,6 +192,8 @@ def test_invented_source_id_rejected() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question="Q?",
         )
     assert exc_info.value.code == codes.UNKNOWN_CITED_SOURCE_ID
 
@@ -181,6 +209,8 @@ def test_malformed_json_maps_to_grounding_code() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question="Q?",
         )
     assert exc_info.value.code == codes.MALFORMED_JSON
 
@@ -199,6 +229,8 @@ def test_insufficient_evidence_abstains_without_citations() -> None:
         generate,
         _chat_request(),
         allowed_source_ids=allowed,
+        source_texts=_texts(),
+        question="Soru?",
     )
     assert validated.grounded is False
     assert validated.cited_source_ids == ()
@@ -228,6 +260,8 @@ def test_validation_logs_only_code_not_sensitive_content(
                 generate,
                 request,
                 allowed_source_ids=allowed,
+                source_texts=_texts(),
+                question=secret_question,
             )
 
     log_text = caplog.text

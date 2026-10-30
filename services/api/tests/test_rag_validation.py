@@ -27,12 +27,16 @@ def _evidence(text: str = "SQL JOIN combines rows.") -> list[EvidenceSource]:
 
 
 def test_validates_grounded_answer_with_matching_citations() -> None:
+    passage = "SQL JOIN combines rows from tables."
     payload = {
         "answer": "A JOIN combines rows from tables [S1].",
         "cited_source_ids": ["S1"],
         "evidence_sufficient": True,
+        "support_quotes": [
+            {"source_id": "S1", "quote": "SQL JOIN combines rows"},
+        ],
     }
-    validated = apply_validated_answer_for_tests(payload, _evidence())
+    validated = apply_validated_answer_for_tests(payload, _evidence(passage))
     assert validated.grounded is True
     assert validated.cited_source_ids == ("S1",)
 
@@ -42,6 +46,7 @@ def test_rejects_invented_citation_ids() -> None:
         "answer": "See [S9] for details.",
         "cited_source_ids": ["S9"],
         "evidence_sufficient": True,
+        "support_quotes": [{"source_id": "S9", "quote": "fabricated quote text"}],
     }
     with pytest.raises(RagGroundingError):
         apply_validated_answer_for_tests(payload, _evidence())
@@ -52,6 +57,7 @@ def test_allows_insufficient_evidence_without_citations() -> None:
         "answer": "The evidence does not contain enough information.",
         "cited_source_ids": [],
         "evidence_sufficient": False,
+        "support_quotes": [],
     }
     validated = apply_validated_answer_for_tests(payload, _evidence())
     assert validated.grounded is False
@@ -63,6 +69,7 @@ def test_rejects_answer_with_inline_citation_not_listed() -> None:
         "answer": "Details in [S1].",
         "cited_source_ids": [],
         "evidence_sufficient": False,
+        "support_quotes": [],
     }
     with pytest.raises(RagGroundingError):
         apply_validated_answer_for_tests(payload, _evidence())
@@ -80,6 +87,7 @@ def test_parse_structured_completion_parses_json_object() -> None:
                 "answer": "ok",
                 "cited_source_ids": [],
                 "evidence_sufficient": False,
+                "support_quotes": [],
             },
         ),
     )
@@ -91,6 +99,7 @@ def test_rejects_citations_when_evidence_insufficient() -> None:
         "answer": "Maybe [S1].",
         "cited_source_ids": ["S1"],
         "evidence_sufficient": False,
+        "support_quotes": [],
     }
     with pytest.raises(RagGroundingError):
         apply_validated_answer_for_tests(payload, _evidence())
@@ -99,7 +108,7 @@ def test_rejects_citations_when_evidence_insufficient() -> None:
 def test_requires_evidence_sufficient_flag() -> None:
     with pytest.raises(RagGroundingError) as exc_info:
         apply_validated_answer_for_tests(
-            {"answer": "x", "cited_source_ids": []},
+            {"answer": "x", "cited_source_ids": [], "support_quotes": []},
             _evidence(),
         )
     assert exc_info.value.code == codes.MISSING_EVIDENCE_SUFFICIENT
@@ -110,6 +119,9 @@ def test_rejects_cited_ids_without_inline_markers() -> None:
         "answer": "INNER JOIN and LEFT JOIN differ in unmatched rows.",
         "cited_source_ids": ["S1"],
         "evidence_sufficient": True,
+        "support_quotes": [
+            {"source_id": "S1", "quote": "SQL JOIN combines rows."},
+        ],
     }
     with pytest.raises(RagGroundingError) as exc_info:
         apply_validated_answer_for_tests(payload, _evidence())

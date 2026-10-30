@@ -43,8 +43,36 @@ _REPAIR_HINTS: dict[str, str] = {
         "appear in answer as an inline [Sx] marker (example: ... [S1] ...)."
     ),
     codes.MALFORMED_JSON: (
-        "Return only one JSON object with answer, evidence_sufficient, and "
-        "cited_source_ids — no prose outside the object."
+        "Return only one JSON object with answer, evidence_sufficient, "
+        "cited_source_ids, and support_quotes — no prose outside the object."
+    ),
+    codes.MISSING_SUPPORT_QUOTES: (
+        "Include support_quotes as a JSON array (empty when abstaining)."
+    ),
+    codes.INVALID_SUPPORT_QUOTES_TYPE: (
+        "support_quotes must be a JSON array of {source_id, quote} objects."
+    ),
+    codes.INVALID_SUPPORT_QUOTE_ENTRY: (
+        "Each support_quotes entry needs source_id (Sx) and quote (verbatim "
+        "from that passage, at least 8 characters)."
+    ),
+    codes.MISSING_SUPPORT_QUOTE_FOR_SOURCE: (
+        "Provide at least one support quote for every cited_source_ids entry."
+    ),
+    codes.QUOTE_NOT_IN_SOURCE: (
+        "Each quote must be copied verbatim from the cited passage text."
+    ),
+    codes.INSUFFICIENT_WITH_SUPPORT_QUOTES: (
+        "When evidence_sufficient is false, support_quotes must be []."
+    ),
+    codes.UNSUPPORTED_FORMULA: (
+        "Do not state formulas absent from the sources; abstain instead."
+    ),
+    codes.UNSUPPORTED_DATE: (
+        "Do not state dates/years absent from the sources; abstain instead."
+    ),
+    codes.UNSUPPORTED_NUMERIC: (
+        "Do not introduce numbers absent from the sources; abstain instead."
     ),
 }
 

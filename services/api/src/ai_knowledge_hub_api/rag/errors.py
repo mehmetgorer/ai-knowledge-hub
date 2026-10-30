@@ -17,6 +17,14 @@ class RagGroundingError(RagError):
         self.code = code
 
 
+class RagFailClosedAbstention(RagError):
+    """Model output cannot be shown; return safe server abstention."""
+
+    def __init__(self, *, code: str) -> None:
+        super().__init__("Answer withheld pending source support")
+        self.code = code
+
+
 class RagGenerationError(RagError):
     """Answer generation failed for a non-grounding reason."""
 

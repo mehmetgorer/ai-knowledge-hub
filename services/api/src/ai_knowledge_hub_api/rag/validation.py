@@ -5,6 +5,10 @@ from dataclasses import dataclass
 
 from ai_knowledge_hub_api.rag import validation_codes as codes
 from ai_knowledge_hub_api.rag.errors import RagGroundingError
+from ai_knowledge_hub_api.rag.evidence_support import (
+    quote_found_in_source,
+    validate_high_risk_answer_content,
+)
 
 _CITATION_IN_ANSWER = re.compile(r"\[S(\d+)\]", re.IGNORECASE)
 
@@ -26,13 +30,81 @@ def _normalize_source_id(raw: str) -> str | None:
     return f"S{int(upper[1:])}"
 
 
+def _parse_support_quotes(
+    payload: dict[str, object],
+    *,
+    cited_ids: list[str],
+    evidence_sufficient: bool,
+    source_texts: dict[str, str],
+) -> None:
+    if "support_quotes" not in payload:
+        raise RagGroundingError(
+            "Model response missing support_quotes",
+            code=codes.MISSING_SUPPORT_QUOTES,
+        )
+
+    raw_quotes = payload.get("support_quotes")
+    if not isinstance(raw_quotes, list):
+        raise RagGroundingError(
+            "support_quotes must be an array",
+            code=codes.INVALID_SUPPORT_QUOTES_TYPE,
+        )
+
+    if not evidence_sufficient:
+        if raw_quotes:
+            raise RagGroundingError(
+                "evidence_sufficient is false but support_quotes were provided",
+                code=codes.INSUFFICIENT_WITH_SUPPORT_QUOTES,
+            )
+        return
+
+    quotes_by_source: dict[str, list[str]] = {source_id: [] for source_id in cited_ids}
+    for entry in raw_quotes:
+        if not isinstance(entry, dict):
+            raise RagGroundingError(
+                "support_quotes entries must be objects",
+                code=codes.INVALID_SUPPORT_QUOTE_ENTRY,
+            )
+        source_raw = entry.get("source_id")
+        quote_raw = entry.get("quote")
+        if not isinstance(source_raw, str) or not isinstance(quote_raw, str):
+            raise RagGroundingError(
+                "support_quotes entries need source_id and quote strings",
+                code=codes.INVALID_SUPPORT_QUOTE_ENTRY,
+            )
+        source_id = _normalize_source_id(source_raw)
+        if source_id is None or source_id not in cited_ids:
+            raise RagGroundingError(
+                "support_quotes source_id must match a cited_source_ids entry",
+                code=codes.INVALID_SUPPORT_QUOTE_ENTRY,
+            )
+        quotes_by_source.setdefault(source_id, []).append(quote_raw.strip())
+
+    for source_id in cited_ids:
+        quotes = quotes_by_source.get(source_id, [])
+        if not quotes:
+            raise RagGroundingError(
+                "Each cited source needs at least one support quote",
+                code=codes.MISSING_SUPPORT_QUOTE_FOR_SOURCE,
+            )
+        source_text = source_texts.get(source_id, "")
+        if not any(quote_found_in_source(quote, source_text) for quote in quotes):
+            raise RagGroundingError(
+                "support_quotes must be verbatim substrings of the cited passage",
+                code=codes.QUOTE_NOT_IN_SOURCE,
+            )
+
+
 def validate_grounded_answer(
     payload: dict[str, object],
     *,
     allowed_source_ids: frozenset[str],
+    source_texts: dict[str, str] | None = None,
+    question: str = "",
 ) -> ValidatedAnswer:
     answer = payload.get("answer")
     cited_raw = payload.get("cited_source_ids")
+    resolved_source_texts = source_texts or {}
 
     if not isinstance(answer, str) or not answer.strip():
         raise RagGroundingError(
@@ -106,6 +178,17 @@ def validate_grounded_answer(
             code=codes.UNKNOWN_INLINE_CITATION,
         )
 
+    _parse_support_quotes(
+        payload,
+        cited_ids=cited_ids,
+        evidence_sufficient=evidence_sufficient_raw,
+        source_texts={
+            key: resolved_source_texts[key]
+            for key in cited_ids
+            if key in resolved_source_texts
+        },
+    )
+
     if not evidence_sufficient_raw:
         if cited_ids or inline_ids_typed:
             raise RagGroundingError(
@@ -137,6 +220,17 @@ def validate_grounded_answer(
             "cited_source_ids must appear in the answer as [Sx] markers",
             code=codes.MISSING_INLINE_CITATION,
         )
+
+    cited_texts = {
+        source_id: resolved_source_texts[source_id]
+        for source_id in cited_ids
+        if source_id in resolved_source_texts
+    }
+    validate_high_risk_answer_content(
+        question=question,
+        answer=answer,
+        cited_texts=cited_texts,
+    )
 
     return ValidatedAnswer(
         answer=answer.strip(),
