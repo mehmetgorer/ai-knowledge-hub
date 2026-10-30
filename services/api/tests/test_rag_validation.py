@@ -114,15 +114,16 @@ def test_requires_evidence_sufficient_flag() -> None:
     assert exc_info.value.code == codes.MISSING_EVIDENCE_SUFFICIENT
 
 
-def test_rejects_cited_ids_without_inline_markers() -> None:
+def test_normalizes_missing_inline_citations_when_other_checks_pass() -> None:
+    passage = "SQL JOIN combines rows from tables."
     payload = {
-        "answer": "INNER JOIN and LEFT JOIN differ in unmatched rows.",
+        "answer": "A JOIN combines rows from tables.",
         "cited_source_ids": ["S1"],
         "evidence_sufficient": True,
         "support_quotes": [
-            {"source_id": "S1", "quote": "SQL JOIN combines rows."},
+            {"source_id": "S1", "quote": "SQL JOIN combines rows"},
         ],
     }
-    with pytest.raises(RagGroundingError) as exc_info:
-        apply_validated_answer_for_tests(payload, _evidence())
-    assert exc_info.value.code == codes.MISSING_INLINE_CITATION
+    validated = apply_validated_answer_for_tests(payload, _evidence(passage))
+    assert validated.grounded is True
+    assert "[S1]" in validated.answer

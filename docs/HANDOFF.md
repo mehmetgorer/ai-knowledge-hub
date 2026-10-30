@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 165 passed, 84 deselected
-uv run pytest -m integration     # integration: 83 passed, 166 deselected
+uv run pytest                    # unit: 175 passed, 85 deselected
+uv run pytest -m integration     # integration: 84 passed, 176 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -408,6 +408,14 @@ POST /collections/{collection_id}/ask
 - **Still 422/503:** Structural citation/JSON protocol failures after repair; Ollama offline; embedding/retrieval errors; invalid request.
 - Frontend unchanged: successful **200** + `grounded=false` already renders the normal Answer card (not the error state).
 - Tests: **`test_rag_outcome.py`**, **`test_ask_unsupported_formula_http_200_not_422`** in **`test_ask_integration.py`**.
+
+## Phase 5A.1 — Deterministic inline citation formatting (complete)
+
+- **Problem:** Real **qwen3:1.7b** often omits inline **`[Sx]`** while supplying valid **`cited_source_ids`** + **`support_quotes`** → two repair attempts → **422**.
+- **Fix:** After quotes, ids, and **high-risk** checks pass, **`append_missing_inline_citations`** appends only validated **`[Sx]`** suffixes (no new ids, no quote fabrication, no answer rewrite). Log: `inline citation format normalized sources=S1,...` (ids only).
+- **Unchanged:** Unknown/extra inline ids, fake quotes, unsupported formula/date/numeric, fail-closed abstention, structural **422** for true protocol failures.
+- **Limitation:** Semantic correctness of paraphrases is **not** verified; quote + high-risk heuristics only.
+- Tests: **`test_rag_citation_normalize.py`**, **`test_ask_pdf_backend_missing_inline_returns_grounded_200`**, updated validation/generation tests.
 
 ## Recommended next steps
 

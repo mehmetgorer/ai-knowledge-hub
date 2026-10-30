@@ -1,14 +1,18 @@
 """Validate structured model output and citation safety."""
 
+import logging
 import re
 from dataclasses import dataclass
 
 from ai_knowledge_hub_api.rag import validation_codes as codes
+from ai_knowledge_hub_api.rag.citation_format import append_missing_inline_citations
 from ai_knowledge_hub_api.rag.errors import RagGroundingError
 from ai_knowledge_hub_api.rag.evidence_support import (
     quote_found_in_source,
     validate_high_risk_answer_content,
 )
+
+logger = logging.getLogger(__name__)
 
 _CITATION_IN_ANSWER = re.compile(r"\[S(\d+)\]", re.IGNORECASE)
 
@@ -215,11 +219,6 @@ def validate_grounded_answer(
         )
 
     missing_inline = set(cited_ids) - inline_ids_typed
-    if missing_inline:
-        raise RagGroundingError(
-            "cited_source_ids must appear in the answer as [Sx] markers",
-            code=codes.MISSING_INLINE_CITATION,
-        )
 
     cited_texts = {
         source_id: resolved_source_texts[source_id]
@@ -232,8 +231,20 @@ def validate_grounded_answer(
         cited_texts=cited_texts,
     )
 
+    final_answer = answer.strip()
+    if missing_inline:
+        final_answer = append_missing_inline_citations(
+            final_answer,
+            cited_ids,
+            missing_source_ids=missing_inline,
+        )
+        logger.info(
+            "RAG inline citation format normalized sources=%s",
+            ",".join(sorted(missing_inline)),
+        )
+
     return ValidatedAnswer(
-        answer=answer.strip(),
+        answer=final_answer,
         cited_source_ids=tuple(cited_ids),
         grounded=True,
     )

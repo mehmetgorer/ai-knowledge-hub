@@ -124,23 +124,15 @@ def test_conflicting_insufficient_flag_with_citations_rejected() -> None:
     assert calls == 2
 
 
-def test_missing_inline_citation_triggers_repair_success() -> None:
+def test_missing_inline_citation_normalized_without_llm_repair() -> None:
     allowed = frozenset({"S1"})
     calls = 0
 
-    def generate(request: OllamaChatRequest) -> str:
+    def generate(_request: OllamaChatRequest) -> str:
         nonlocal calls
         calls += 1
-        if calls == 1:
-            return _payload(
-                answer="JOIN farkı açıklaması citations only in array.",
-                cited=["S1"],
-                evidence_sufficient=True,
-            )
-        assert "CORRECTION REQUIRED" in request.user_message
-        assert codes.MISSING_INLINE_CITATION in request.user_message
         return _payload(
-            answer="JOIN farkı [S1].",
+            answer="JOIN farkı açıklaması citations only in array.",
             cited=["S1"],
             evidence_sufficient=True,
         )
@@ -153,17 +145,27 @@ def test_missing_inline_citation_triggers_repair_success() -> None:
         question="JOIN?",
     )
     assert validated.grounded is True
-    assert calls == 2
+    assert "[S1]" in validated.answer
+    assert calls == 1
 
 
-def test_missing_inline_citation_repair_still_invalid() -> None:
-    allowed = frozenset({"S1"})
+def test_extra_inline_citation_still_rejected_after_repair() -> None:
+    allowed = frozenset({"S1", "S2"})
+    texts = {
+        "S1": _SOURCE_SNIPPET,
+        "S2": "Other passage text for second source.",
+    }
 
     def generate(_request: OllamaChatRequest) -> str:
-        return _payload(
-            answer="No markers in text.",
-            cited=["S1"],
-            evidence_sufficient=True,
+        return json.dumps(
+            {
+                "answer": "See [S1] and also [S2].",
+                "cited_source_ids": ["S1"],
+                "evidence_sufficient": True,
+                "support_quotes": [
+                    {"source_id": "S1", "quote": _SOURCE_SNIPPET},
+                ],
+            },
         )
 
     with pytest.raises(RagGroundingError) as exc_info:
@@ -171,10 +173,10 @@ def test_missing_inline_citation_repair_still_invalid() -> None:
             generate,
             _chat_request(),
             allowed_source_ids=allowed,
-            source_texts=_texts(),
+            source_texts=texts,
             question="Q?",
         )
-    assert exc_info.value.code == codes.MISSING_INLINE_CITATION
+    assert exc_info.value.code == codes.EXTRA_INLINE_CITATION
 
 
 def test_invented_source_id_rejected() -> None:
@@ -249,23 +251,24 @@ def test_validation_logs_only_code_not_sensitive_content(
 
     def generate(_req: OllamaChatRequest) -> str:
         return _payload(
-            answer="No inline.",
+            answer="Valid body without marker.",
             cited=["S1"],
             evidence_sufficient=True,
         )
 
-    with caplog.at_level(logging.WARNING):
-        with pytest.raises(RagGroundingError):
-            complete_and_validate_grounded_answer(
-                generate,
-                request,
-                allowed_source_ids=allowed,
-                source_texts=_texts(),
-                question=secret_question,
-            )
+    with caplog.at_level(logging.INFO):
+        validated = complete_and_validate_grounded_answer(
+            generate,
+            request,
+            allowed_source_ids=allowed,
+            source_texts=_texts(),
+            question=secret_question,
+        )
 
+    assert validated.grounded is True
+    assert "[S1]" in validated.answer
     log_text = caplog.text
-    assert codes.MISSING_INLINE_CITATION in log_text
+    assert "normalized sources=S1" in log_text
     assert secret_question not in log_text
     assert secret_passage not in log_text
-    assert "No inline." not in log_text
+    assert "Valid body" not in log_text

@@ -804,7 +804,7 @@ def test_ask_invalid_grounding_raises(
 
     def bad_llm(_request: OllamaChatRequest) -> str:
         return _llm_payload(
-            answer="Missing marker",
+            answer="See [S1] and also [S2] in text.",
             cited=["S1"],
             evidence_sufficient=True,
             quote_text="Evidence",
@@ -1213,3 +1213,61 @@ async def test_ask_unsupported_formula_http_200_not_422(
     assert body["sources"] == []
     assert "dL/dw" not in body["answer"]
     assert "yeterli kaynak" in body["answer"]
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_ask_pdf_backend_missing_inline_returns_grounded_200(
+    auth_env: None,
+    key_pair: Ed25519KeyPair,
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+    passage = "Projede backend olarak FastAPI kullanılmaktadır."
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="PDF RAG")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="rag-test.pdf",
+            chunk_index=0,
+            text=passage,
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        collection_id = str(collection.id)
+
+    def fake_llm(_request: OllamaChatRequest) -> str:
+        return _llm_payload(
+            answer="Backend teknolojisi FastAPI olarak seçilmiştir.",
+            cited=["S1"],
+            quote_text="FastAPI kullanılmaktadır",
+        )
+
+    with (
+        patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
+        ),
+        patch("ai_knowledge_hub_api.rag.service.get_default_ollama_client") as mock,
+    ):
+        mock.return_value.complete_json = fake_llm
+        async with _client_for_subject(key_pair, "owner-a") as client:
+            response = await client.post(
+                f"/collections/{collection_id}/ask",
+                json={
+                    "question": "Projede hangi backend teknolojisi kullanılıyor?",
+                    "top_k": 5,
+                },
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["grounded"] is True
+    assert len(body["sources"]) == 1
+    assert body["sources"][0]["source_id"] == "S1"
+    assert "[S1]" in body["answer"]
