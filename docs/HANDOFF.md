@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 137 passed, 77 deselected
-uv run pytest -m integration     # integration: 76 passed, 138 deselected
+uv run pytest                    # unit: 157 passed, 81 deselected
+uv run pytest -m integration     # integration: 80 passed, 158 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -374,6 +374,14 @@ POST /collections/{collection_id}/ask
 - **Ollama:** **`OLLAMA_TEMPERATURE=0`**, **`OLLAMA_THINK_ENABLED=false`** (Qwen3 thinking off when supported), JSON **`format`**, existing token/timeout limits.
 - **Retrieval threshold:** optional **`RAG_WEAK_RETRIEVAL_BEST_DISTANCE_ABOVE`** (default **disabled**); calibration tests in **`test_rag_relevance_calibration.py`** show aggressive cutoffs harm cross-language matches — not enabled in production defaults.
 - Tests: **`test_rag_reliability.py`**, **`test_rag_relevance_calibration.py`**, extended **`test_rag_validation.py`**, **`test_ask_integration.py`**.
+
+## Phase 4A.3a — Ollama grounded answer repair (complete)
+
+- **Root fix:** real Qwen3 often returned **`cited_source_ids`** without matching inline **`[Sx]`** markers → **`missing_inline_citation`** (422). Validation unchanged; one bounded **repair** attempt with formatting-only hints.
+- **Ollama:** JSON **`format`** uses **`GROUNDED_ANSWER_JSON_SCHEMA`** (`answer`, **`evidence_sufficient`**, **`cited_source_ids`**); still **`temperature=0`**, **`think: false`**.
+- **Pipeline:** **`complete_and_validate_grounded_answer`** (`rag/generation.py`) → parse (`parse_completion.py`) → validate with codes (`validation_codes.py`) → optional repair (`repair.py`). Server logs **`code=`** and attempt only (no questions, passages, prompts, or answers).
+- **`RagGroundingError.code`:** safe category for logs; API still returns generic **422** detail.
+- Tests: **`test_rag_generation.py`**, updated **`test_rag_validation.py`**, **`test_rag_reliability.py`** (schema in request body). CI uses mocked Ollama only — **live qwen3:1.7b not verified in CI** (manual re-test recommended after deploy).
 
 ## Recommended next steps
 

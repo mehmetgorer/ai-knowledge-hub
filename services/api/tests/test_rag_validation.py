@@ -5,10 +5,11 @@ import uuid
 
 import pytest
 
-from ai_knowledge_hub_api.rag.errors import RagGroundingError
+from ai_knowledge_hub_api.rag import validation_codes as codes
+from ai_knowledge_hub_api.rag.errors import RagGroundingError, RagOllamaResponseError
 from ai_knowledge_hub_api.rag.evidence import EvidenceSource
+from ai_knowledge_hub_api.rag.parse_completion import parse_structured_completion
 from ai_knowledge_hub_api.rag.service import apply_validated_answer_for_tests
-from ai_knowledge_hub_api.rag.validation import parse_structured_completion
 from ai_knowledge_hub_api.search.service import SemanticSearchMatch
 
 
@@ -68,7 +69,7 @@ def test_rejects_answer_with_inline_citation_not_listed() -> None:
 
 
 def test_parse_structured_completion_rejects_non_json() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(RagOllamaResponseError):
         parse_structured_completion("not json")
 
 
@@ -96,8 +97,20 @@ def test_rejects_citations_when_evidence_insufficient() -> None:
 
 
 def test_requires_evidence_sufficient_flag() -> None:
-    with pytest.raises(RagGroundingError):
+    with pytest.raises(RagGroundingError) as exc_info:
         apply_validated_answer_for_tests(
             {"answer": "x", "cited_source_ids": []},
             _evidence(),
         )
+    assert exc_info.value.code == codes.MISSING_EVIDENCE_SUFFICIENT
+
+
+def test_rejects_cited_ids_without_inline_markers() -> None:
+    payload = {
+        "answer": "INNER JOIN and LEFT JOIN differ in unmatched rows.",
+        "cited_source_ids": ["S1"],
+        "evidence_sufficient": True,
+    }
+    with pytest.raises(RagGroundingError) as exc_info:
+        apply_validated_answer_for_tests(payload, _evidence())
+    assert exc_info.value.code == codes.MISSING_INLINE_CITATION

@@ -74,3 +74,9 @@ def test_ollama_request_uses_temperature_zero_and_disables_thinking() -> None:
     options = body["options"]
     assert isinstance(options, dict)
     assert options.get("temperature") == 0.0
+    assert isinstance(body["format"], dict)
+    assert body["format"].get("required") == [
+        "answer",
+        "evidence_sufficient",
+        "cited_source_ids",
+    ]

@@ -9,12 +9,8 @@ from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.rag.config import RagConfig
-from ai_knowledge_hub_api.rag.errors import (
-    RagGroundingError,
-    RagOllamaError,
-    RagOllamaResponseError,
-)
 from ai_knowledge_hub_api.rag.evidence import EvidenceSource, build_evidence_context
+from ai_knowledge_hub_api.rag.generation import complete_and_validate_grounded_answer
 from ai_knowledge_hub_api.rag.ollama import (
     OllamaChatClient,
     OllamaChatRequest,
@@ -27,7 +23,6 @@ from ai_knowledge_hub_api.rag.prompts import (
 from ai_knowledge_hub_api.rag.relevance import should_abstain_for_weak_retrieval
 from ai_knowledge_hub_api.rag.validation import (
     ValidatedAnswer,
-    parse_structured_completion,
     validate_grounded_answer,
 )
 from ai_knowledge_hub_api.search.service import (
@@ -181,22 +176,12 @@ def ask_collection_question(
     client = ollama_client or get_default_ollama_client()
     generate_fn = generate_json or client.complete_json
 
-    try:
-        raw_content = generate_fn(chat_request)
-    except RagOllamaError:
-        raise
-
-    try:
-        payload = parse_structured_completion(raw_content)
-        allowed = frozenset(item.source_id for item in evidence)
-        validated = validate_grounded_answer(
-            payload,
-            allowed_source_ids=allowed,
-        )
-    except RagGroundingError:
-        raise
-    except RagOllamaResponseError as exc:
-        raise RagGroundingError("Model response could not be verified") from exc
+    allowed = frozenset(item.source_id for item in evidence)
+    validated = complete_and_validate_grounded_answer(
+        generate_fn,
+        chat_request,
+        allowed_source_ids=allowed,
+    )
 
     if not validated.grounded:
         return AskCollectionResult(

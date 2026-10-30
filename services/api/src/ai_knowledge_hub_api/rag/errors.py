@@ -12,6 +12,10 @@ class RagValidationError(RagError):
 class RagGroundingError(RagError):
     """Model output failed citation or grounding validation."""
 
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class RagGenerationError(RagError):
     """Answer generation failed for a non-grounding reason."""

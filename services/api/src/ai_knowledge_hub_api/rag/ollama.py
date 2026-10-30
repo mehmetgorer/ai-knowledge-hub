@@ -12,6 +12,7 @@ from ai_knowledge_hub_api.rag.errors import (
     RagOllamaResponseError,
     RagOllamaTimeoutError,
 )
+from ai_knowledge_hub_api.rag.schema import GROUNDED_ANSWER_JSON_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class HttpOllamaChatClient:
         body: dict[str, object] = {
             "model": request.model,
             "stream": False,
-            "format": "json",
+            "format": GROUNDED_ANSWER_JSON_SCHEMA,
             "messages": [
                 {"role": "system", "content": request.system_message},
                 {"role": "user", "content": request.user_message},
