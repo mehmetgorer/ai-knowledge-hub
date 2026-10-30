@@ -1,15 +1,13 @@
-# Screenshots for README (Phase 6A)
+# Portfolio screenshots (Phase 6B)
 
-Place PNG files in this directory. The root README references these paths once captured.
+Final PNGs committed for GitHub README / README.tr.md. Raw captures stay in `_incoming/` (gitignored).
 
-| File | Viewport | Content |
-| ---- | -------- | ------- |
-| `ask-ai.png` | Desktop (~1440px) | Ask AI tab: real grounded answer with visible source citation (PDF preferred) |
-| `semantic-search.png` | Desktop | Semantic Search tab with non-empty match results |
-| `documents.png` | Desktop | Documents tab: uploaded files with status badges (e.g. Ready) |
-| `mobile-ask.png` | 375px width | Ask AI on mobile |
-| `mobile-documents.png` | 375px width | Document cards on mobile |
+| File | Source | Subject |
+| ---- | ------ | ------- |
+| `ask-ai-grounded-answer.png` | `_incoming/6.png` | Hero — grounded TR answer + [S1] |
+| `ask-ai-source-evidence.png` | `_incoming/13.png` | Expanded source passage |
+| `ask-ai-abstention.png` | `_incoming/9.png` | Safe abstention |
+| `documents-indexed-pdf.png` | `_incoming/3.png` | Ready document row |
+| `ask-ai-numeric-fact.png` | `_incoming/7.png` | Single numeric fact + citation |
 
-Capture from http://localhost:3000/dashboard while signed in. Crop out browser chrome, DevTools, and OS taskbar. Use demo/synthetic documents only; no secrets in frame.
-
-Optional: `ask-abstention.png` — safe abstention when retrieval is insufficient.
+Regenerate crops: `uv run --with pillow python scripts/crop_portfolio_screenshots.py`

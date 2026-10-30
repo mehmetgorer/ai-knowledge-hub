@@ -456,10 +456,15 @@ POST /collections/{collection_id}/ask
 - **Docs:** `docs/QUALITY_AUDIT.md` — full findings register, test counts, portfolio vs production gaps.
 - **Local verification (2026-03-30):** backend unit **180** passed; integration **95** passed; frontend **41** passed; build OK.
 
-## Phase 6A — GitHub README and screenshots (in progress)
+## Phase 6A — GitHub README and screenshots (complete)
 
-- **README:** Root `README.md` rewritten for portfolio readers (plain-language intro, RAG flow, accurate CI with three jobs, local setup, limitations). Stale claims removed (Postgres used for full app data; integration CI on GitHub).
-- **Screenshots:** Target paths under `docs/screenshots/` (`ask-ai.png`, `semantic-search.png`, `documents.png`, `mobile-ask.png`, `mobile-documents.png`). Checklist in `docs/screenshots/README.md`. Automated capture not run in agent (no Playwright / authenticated browser in environment); PNGs to be added manually before gallery embeds on GitHub.
+- Root README rewritten (Phase 6A); superseded by Phase 6B bilingual gallery.
+
+## Phase 6B — Bilingual portfolio README (complete)
+
+- **`README.md`** (English) and **`README.tr.md`** (Turkish) with language links; shared structure and five cropped screenshots under `docs/screenshots/`.
+- **`docs/screenshots/_incoming/`** gitignored; finals from `_incoming/6,13,9,3,7.png` via `scripts/crop_portfolio_screenshots.py` (Chrome/taskbar removed, max width 1200px).
+- Transparency: `rag-test.pdf` fictional demo data; no live demo URL; structural citation limits documented.
 
 ## Recommended next steps
 
