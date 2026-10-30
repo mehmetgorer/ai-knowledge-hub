@@ -414,6 +414,30 @@ export async function indexDocument(
   return { ok: true, index: payload as DocumentIndexResult };
 }
 
+export async function deleteDocument(
+  collectionId: string,
+  documentId: string,
+): Promise<{ ok: true } | { ok: false; error: ApiClientError }> {
+  const result = await authedApiRequest(
+    `/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(documentId)}`,
+    { method: "DELETE" },
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.response.status !== 204) {
+    return {
+      ok: false,
+      error: {
+        message: `Unexpected API response after delete (${result.response.status}).`,
+      },
+    };
+  }
+
+  return { ok: true };
+}
+
 export async function searchCollection(
   collectionId: string,
   query: string,

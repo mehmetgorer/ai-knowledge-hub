@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import { formatDocumentStatus } from "./format-document-status.ts";
 import {
+  buildDeleteConfirmationMessage,
   indexActionLabel,
   processActionLabel,
+  shouldDisableDeleteButton,
   shouldDisableIndexButton,
   shouldDisableProcessButton,
 } from "./document-ui-actions.ts";
@@ -29,6 +31,7 @@ describe("document-ui-actions", () => {
       status: "PROCESSED",
       processFeedbackKind: "idle" as const,
       indexFeedbackKind: "idle" as const,
+      deleteFeedbackKind: "idle" as const,
       documentsReady: true,
     };
     assert.equal(shouldDisableProcessButton(base), false);
@@ -67,5 +70,36 @@ describe("document-ui-actions", () => {
   it("includes INDEXING in formatDocumentStatus", () => {
     assert.equal(formatDocumentStatus("INDEXING"), "Indexing");
     assert.equal(formatDocumentStatus("READY"), "Indexed / Ready");
+  });
+
+  it("requires explicit confirmation copy for delete", () => {
+    assert.match(
+      buildDeleteConfirmationMessage("notes.txt"),
+      /Delete "notes\.txt"/,
+    );
+    assert.match(buildDeleteConfirmationMessage("notes.txt"), /cannot be undone/);
+  });
+
+  it("disables delete while processing, indexing, or delete in flight", () => {
+    const ready = {
+      status: "UPLOADED",
+      processFeedbackKind: "idle" as const,
+      indexFeedbackKind: "idle" as const,
+      deleteFeedbackKind: "idle" as const,
+      documentsReady: true,
+    };
+    assert.equal(shouldDisableDeleteButton(ready), false);
+    assert.equal(
+      shouldDisableDeleteButton({ ...ready, status: "PROCESSING" }),
+      true,
+    );
+    assert.equal(
+      shouldDisableDeleteButton({ ...ready, status: "INDEXING" }),
+      true,
+    );
+    assert.equal(
+      shouldDisableDeleteButton({ ...ready, deleteFeedbackKind: "loading" }),
+      true,
+    );
   });
 });

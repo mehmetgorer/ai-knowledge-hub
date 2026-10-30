@@ -9,6 +9,7 @@ import {
 } from "@/components/auth-shell";
 import {
   askCollection,
+  deleteDocument,
   fetchCollections,
   fetchDocuments,
   formatDocumentStatus,
@@ -41,8 +42,10 @@ import {
 } from "@/lib/search/search-ui-guards";
 import { validateSearchQueryInput } from "@/lib/search/parse-search-response";
 import {
+  buildDeleteConfirmationMessage,
   indexActionLabel,
   processActionLabel,
+  shouldDisableDeleteButton,
   shouldDisableIndexButton,
   shouldDisableProcessButton,
 } from "@/lib/documents/document-ui-actions";
@@ -80,6 +83,12 @@ type DocumentIndexFeedback =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "success"; embeddedChunkCount: number; embeddingModel: string }
+  | { kind: "error"; message: string };
+
+type DocumentDeleteFeedback =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "success" }
   | { kind: "error"; message: string };
 
 type SearchViewState =
@@ -192,6 +201,7 @@ export function DocumentsPanel() {
   const searchCoordinatorRef = useRef(new SearchRequestCoordinator());
   const askCoordinatorRef = useRef(new SearchRequestCoordinator());
   const processingDocumentIdsRef = useRef<Set<string>>(new Set());
+  const deletingDocumentIdsRef = useRef<Set<string>>(new Set());
   const selectedCollectionIdRef = useRef(selectedCollectionId);
 
   useEffect(() => {
@@ -206,6 +216,9 @@ export function DocumentsPanel() {
   >({});
   const [indexFeedbackByDocumentId, setIndexFeedbackByDocumentId] = useState<
     Record<string, DocumentIndexFeedback>
+  >({});
+  const [deleteFeedbackByDocumentId, setDeleteFeedbackByDocumentId] = useState<
+    Record<string, DocumentDeleteFeedback>
   >({});
   const [searchQuery, setSearchQuery] = useState("");
   const searchQueryRef = useRef(searchQuery);
@@ -456,6 +469,99 @@ export function DocumentsPanel() {
   const invalidatePendingAsk = useCallback(() => {
     askCoordinatorRef.current.invalidatePending();
   }, []);
+
+  const runDeleteDocument = useCallback(
+    async (documentId: string, originalFilename: string) => {
+      const collectionIdAtStart = selectedCollectionIdRef.current;
+      if (!collectionIdAtStart) {
+        return;
+      }
+      if (
+        !window.confirm(buildDeleteConfirmationMessage(originalFilename))
+      ) {
+        return;
+      }
+      if (
+        !tryAcquireProcessLock(deletingDocumentIdsRef.current, documentId)
+      ) {
+        return;
+      }
+
+      setDeleteFeedbackByDocumentId((current) => ({
+        ...current,
+        [documentId]: { kind: "loading" },
+      }));
+
+      try {
+        const result = await deleteDocument(collectionIdAtStart, documentId);
+
+        const selectedNow = selectedCollectionIdRef.current;
+        if (
+          shouldRefreshDocumentsAfterProcess(selectedNow, collectionIdAtStart)
+        ) {
+          invalidatePendingSearch();
+          invalidatePendingAsk();
+          const requestId = ++documentsRequestIdRef.current;
+          await runDocumentsFetch(collectionIdAtStart, requestId);
+        }
+
+        if (
+          !shouldApplyProcessFeedback(
+            selectedCollectionIdRef.current,
+            collectionIdAtStart,
+          )
+        ) {
+          setDeleteFeedbackByDocumentId((current) => {
+            if (!(documentId in current)) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[documentId];
+            return next;
+          });
+          return;
+        }
+
+        if (!result.ok) {
+          setDeleteFeedbackByDocumentId((current) => ({
+            ...current,
+            [documentId]: { kind: "error", message: result.error.message },
+          }));
+          return;
+        }
+
+        setDeleteFeedbackByDocumentId((current) => {
+          if (!(documentId in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[documentId];
+          return next;
+        });
+        setUploadError(null);
+        setUploadSuccess(`"${originalFilename}" deleted.`);
+        setProcessFeedbackByDocumentId((current) => {
+          if (!(documentId in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[documentId];
+          return next;
+        });
+        setIndexFeedbackByDocumentId((current) => {
+          if (!(documentId in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[documentId];
+          return next;
+        });
+      } finally {
+        releaseProcessLock(deletingDocumentIdsRef.current, documentId);
+      }
+    },
+    [invalidatePendingAsk, invalidatePendingSearch, runDocumentsFetch],
+  );
 
   const runCollectionAsk = useCallback(async () => {
     const coordinator = askCoordinatorRef.current;
@@ -721,6 +827,7 @@ export function DocumentsPanel() {
                   setSelectedCollectionId(event.target.value);
                   setProcessFeedbackByDocumentId({});
                   setIndexFeedbackByDocumentId({});
+                  setDeleteFeedbackByDocumentId({});
                   setSearchQuery("");
                   setSubmittedSearchQuery("");
                   setSearchState({ kind: "idle" });
@@ -1225,16 +1332,23 @@ export function DocumentsPanel() {
                         indexFeedbackByDocumentId[document.id] ?? {
                           kind: "idle" as const,
                         };
+                      const deleteFeedback =
+                        deleteFeedbackByDocumentId[document.id] ?? {
+                          kind: "idle" as const,
+                        };
                       const rowActionState = {
                         status: document.status,
                         processFeedbackKind: processFeedback.kind,
                         indexFeedbackKind: indexFeedback.kind,
+                        deleteFeedbackKind: deleteFeedback.kind,
                         documentsReady: documentsView.kind === "ready",
                       };
                       const disableProcess =
                         shouldDisableProcessButton(rowActionState);
                       const disableIndex =
                         shouldDisableIndexButton(rowActionState);
+                      const disableDelete =
+                        shouldDisableDeleteButton(rowActionState);
 
                       return (
                       <tr key={document.id}>
@@ -1342,6 +1456,30 @@ export function DocumentsPanel() {
                                 role="alert"
                               >
                                 {indexFeedback.message}
+                              </p>
+                            ) : null}
+                            <button
+                              type="button"
+                              className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                              disabled={disableDelete}
+                              aria-busy={deleteFeedback.kind === "loading"}
+                              onClick={() => {
+                                void runDeleteDocument(
+                                  document.id,
+                                  document.original_filename,
+                                );
+                              }}
+                            >
+                              {deleteFeedback.kind === "loading"
+                                ? "Deleting…"
+                                : "Delete"}
+                            </button>
+                            {deleteFeedback.kind === "error" ? (
+                              <p
+                                className="text-xs text-red-600 dark:text-red-400"
+                                role="alert"
+                              >
+                                {deleteFeedback.message}
                               </p>
                             ) : null}
                           </div>

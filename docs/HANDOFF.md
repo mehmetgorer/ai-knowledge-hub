@@ -39,8 +39,8 @@ docker compose up -d
 uv lock --check
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest                    # unit: 175 passed, 85 deselected
-uv run pytest -m integration     # integration: 84 passed, 176 deselected
+uv run pytest                    # unit: 180 passed, 91 deselected
+uv run pytest -m integration     # integration: 90 passed, 181 deselected
 uv run alembic upgrade head      # idempotent on main DB
 
 # Frontend (repo root)
@@ -416,6 +416,13 @@ POST /collections/{collection_id}/ask
 - **Unchanged:** Unknown/extra inline ids, fake quotes, unsupported formula/date/numeric, fail-closed abstention, structural **422** for true protocol failures.
 - **Limitation:** Semantic correctness of paraphrases is **not** verified; quote + high-risk heuristics only.
 - Tests: **`test_rag_citation_normalize.py`**, **`test_ask_pdf_backend_missing_inline_returns_grounded_200`**, updated validation/generation tests.
+
+## Phase 5B — Document deletion (complete)
+
+- **`DELETE /collections/{collection_id}/documents/{document_id}`** — authenticated; ownership via existing **`get_owned_document_or_404`**; **204** on success.
+- **`delete_owned_document`**: rejects **PROCESSING** / **INDEXING** (**409**); DB delete + **commit** first (chunks/embeddings cascade); then **`LocalDocumentStorage.delete`**. DB failure → rollback, file kept. Storage **`OSError`** after commit → log warning (possible orphan file on disk).
+- Dashboard: per-row **Delete** with **`window.confirm`**, loading/disabled guards, list refresh, upload-area success message; search/ask pending results invalidated after delete.
+- Tests: **`test_document_deletion.py`**, **`test_document_deletion_integration.py`**, **`test_documents.py`** (DELETE 401), **`document-ui-actions.test.ts`**.
 
 ## Recommended next steps
 

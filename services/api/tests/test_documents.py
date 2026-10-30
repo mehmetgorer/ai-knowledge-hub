@@ -52,6 +52,19 @@ async def test_process_document_requires_authentication(auth_env: None) -> None:
     assert response.status_code == 401
 
 
+@pytest.mark.anyio
+async def test_delete_document_requires_authentication(auth_env: None) -> None:
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    collection_id = "00000000-0000-0000-0000-000000000001"
+    document_id = "00000000-0000-0000-0000-000000000002"
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.delete(
+            f"/collections/{collection_id}/documents/{document_id}",
+        )
+    assert response.status_code == 401
+
+
 def test_document_response_schema_excludes_storage_key() -> None:
     from ai_knowledge_hub_api.schemas import DocumentProcessResponse, DocumentResponse
 

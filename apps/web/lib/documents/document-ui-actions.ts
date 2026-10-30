@@ -6,6 +6,7 @@ export type RowActionState = {
   status: string;
   processFeedbackKind: DocumentFeedbackKind;
   indexFeedbackKind: DocumentFeedbackKind;
+  deleteFeedbackKind: DocumentFeedbackKind;
   documentsReady: boolean;
 };
 
@@ -42,6 +43,9 @@ export function shouldDisableProcessButton(state: RowActionState): boolean {
   if (state.indexFeedbackKind === "loading") {
     return true;
   }
+  if (state.deleteFeedbackKind === "loading") {
+    return true;
+  }
   return false;
 }
 
@@ -56,6 +60,35 @@ export function shouldDisableIndexButton(state: RowActionState): boolean {
     return true;
   }
   if (state.processFeedbackKind === "loading") {
+    return true;
+  }
+  if (state.deleteFeedbackKind === "loading") {
+    return true;
+  }
+  return false;
+}
+
+const DELETE_BLOCKED_STATUSES = new Set(["PROCESSING", "INDEXING"]);
+
+export function buildDeleteConfirmationMessage(originalFilename: string): string {
+  const name = originalFilename.trim() || "this document";
+  return `Delete "${name}" from this collection? This cannot be undone.`;
+}
+
+export function shouldDisableDeleteButton(state: RowActionState): boolean {
+  if (!state.documentsReady) {
+    return true;
+  }
+  if (DELETE_BLOCKED_STATUSES.has(state.status)) {
+    return true;
+  }
+  if (state.deleteFeedbackKind === "loading") {
+    return true;
+  }
+  if (state.processFeedbackKind === "loading") {
+    return true;
+  }
+  if (state.indexFeedbackKind === "loading") {
     return true;
   }
   return false;

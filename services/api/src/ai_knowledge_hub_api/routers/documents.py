@@ -16,6 +16,10 @@ from ai_knowledge_hub_api.collections.access import get_owned_collection_or_404
 from ai_knowledge_hub_api.config import Settings, get_settings
 from ai_knowledge_hub_api.db_session import get_db
 from ai_knowledge_hub_api.documents.access import get_owned_document_or_404
+from ai_knowledge_hub_api.documents.deletion import (
+    DocumentDeletionConflictError,
+    delete_owned_document,
+)
 from ai_knowledge_hub_api.documents.indexing import (
     DocumentIndexingConflictError,
     DocumentIndexingFailedError,
@@ -214,3 +218,35 @@ def index_collection_document(
         embedding_model=result.embedding_model,
         embedded_chunk_count=result.embedded_chunk_count,
     )
+
+
+@router.delete(
+    "/{collection_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_collection_document(
+    collection_id: uuid.UUID,
+    document_id: uuid.UUID,
+    owner_subject: str = Depends(get_current_subject),
+    db: Session = Depends(get_db),
+    storage: LocalDocumentStorage = Depends(get_document_storage),
+) -> None:
+    document = get_owned_document_or_404(
+        db,
+        collection_id,
+        document_id,
+        owner_subject,
+    )
+    try:
+        delete_owned_document(db, document=document, storage=storage)
+    except DocumentDeletionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.message,
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Document could not be deleted",
+        ) from exc
