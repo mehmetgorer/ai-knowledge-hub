@@ -116,6 +116,27 @@ class Settings(BaseSettings):
         default=512,
         validation_alias="RAG_MAX_OUTPUT_TOKENS",
     )
+    ollama_temperature: float = Field(
+        default=0.0,
+        validation_alias="OLLAMA_TEMPERATURE",
+    )
+    ollama_think_enabled: bool = Field(
+        default=False,
+        validation_alias="OLLAMA_THINK_ENABLED",
+    )
+    rag_weak_retrieval_best_distance_above: float | None = Field(
+        default=None,
+        validation_alias="RAG_WEAK_RETRIEVAL_BEST_DISTANCE_ABOVE",
+    )
+
+    @field_validator("rag_weak_retrieval_best_distance_above", mode="before")
+    @classmethod
+    def _empty_weak_distance_to_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("ollama_base_url")
     @classmethod

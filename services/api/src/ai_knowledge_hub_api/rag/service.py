@@ -24,6 +24,7 @@ from ai_knowledge_hub_api.rag.prompts import (
     build_system_instructions,
     build_user_message,
 )
+from ai_knowledge_hub_api.rag.relevance import should_abstain_for_weak_retrieval
 from ai_knowledge_hub_api.rag.validation import (
     ValidatedAnswer,
     parse_structured_completion,
@@ -144,6 +145,18 @@ def ask_collection_question(
             grounded=False,
         )
 
+    if should_abstain_for_weak_retrieval(
+        evidence,
+        weak_best_distance_above=resolved_rag.weak_retrieval_best_distance_above,
+    ):
+        db.commit()
+        return AskCollectionResult(
+            answer=_no_evidence_answer(question),
+            sources=(),
+            model=model_name,
+            grounded=False,
+        )
+
     db.commit()
     if db.in_transaction():
         logger.warning(
@@ -161,6 +174,8 @@ def ask_collection_question(
         max_output_tokens=resolved_rag.max_output_tokens,
         timeout_seconds=resolved_settings.ollama_request_timeout_seconds,
         base_url=resolved_settings.ollama_base_url,
+        temperature=resolved_settings.ollama_temperature,
+        think_enabled=resolved_settings.ollama_think_enabled,
     )
 
     client = ollama_client or get_default_ollama_client()

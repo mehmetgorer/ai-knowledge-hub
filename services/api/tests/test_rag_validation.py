@@ -29,6 +29,7 @@ def test_validates_grounded_answer_with_matching_citations() -> None:
     payload = {
         "answer": "A JOIN combines rows from tables [S1].",
         "cited_source_ids": ["S1"],
+        "evidence_sufficient": True,
     }
     validated = apply_validated_answer_for_tests(payload, _evidence())
     assert validated.grounded is True
@@ -39,6 +40,7 @@ def test_rejects_invented_citation_ids() -> None:
     payload = {
         "answer": "See [S9] for details.",
         "cited_source_ids": ["S9"],
+        "evidence_sufficient": True,
     }
     with pytest.raises(RagGroundingError):
         apply_validated_answer_for_tests(payload, _evidence())
@@ -48,6 +50,7 @@ def test_allows_insufficient_evidence_without_citations() -> None:
     payload = {
         "answer": "The evidence does not contain enough information.",
         "cited_source_ids": [],
+        "evidence_sufficient": False,
     }
     validated = apply_validated_answer_for_tests(payload, _evidence())
     assert validated.grounded is False
@@ -58,6 +61,7 @@ def test_rejects_answer_with_inline_citation_not_listed() -> None:
     payload = {
         "answer": "Details in [S1].",
         "cited_source_ids": [],
+        "evidence_sufficient": False,
     }
     with pytest.raises(RagGroundingError):
         apply_validated_answer_for_tests(payload, _evidence())
@@ -70,6 +74,30 @@ def test_parse_structured_completion_rejects_non_json() -> None:
 
 def test_parse_structured_completion_parses_json_object() -> None:
     payload = parse_structured_completion(
-        json.dumps({"answer": "ok", "cited_source_ids": []}),
+        json.dumps(
+            {
+                "answer": "ok",
+                "cited_source_ids": [],
+                "evidence_sufficient": False,
+            },
+        ),
     )
     assert payload["answer"] == "ok"
+
+
+def test_rejects_citations_when_evidence_insufficient() -> None:
+    payload = {
+        "answer": "Maybe [S1].",
+        "cited_source_ids": ["S1"],
+        "evidence_sufficient": False,
+    }
+    with pytest.raises(RagGroundingError):
+        apply_validated_answer_for_tests(payload, _evidence())
+
+
+def test_requires_evidence_sufficient_flag() -> None:
+    with pytest.raises(RagGroundingError):
+        apply_validated_answer_for_tests(
+            {"answer": "x", "cited_source_ids": []},
+            _evidence(),
+        )

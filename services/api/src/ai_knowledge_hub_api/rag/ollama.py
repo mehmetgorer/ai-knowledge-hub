@@ -24,6 +24,8 @@ class OllamaChatRequest:
     max_output_tokens: int
     timeout_seconds: float
     base_url: str
+    temperature: float = 0.0
+    think_enabled: bool = False
 
 
 class OllamaChatClient(Protocol):
@@ -39,7 +41,7 @@ class HttpOllamaChatClient:
 
     def complete_json(self, request: OllamaChatRequest) -> str:
         url = f"{_normalize_base_url(request.base_url)}/api/chat"
-        body = {
+        body: dict[str, object] = {
             "model": request.model,
             "stream": False,
             "format": "json",
@@ -47,8 +49,13 @@ class HttpOllamaChatClient:
                 {"role": "system", "content": request.system_message},
                 {"role": "user", "content": request.user_message},
             ],
-            "options": {"num_predict": request.max_output_tokens},
+            "options": {
+                "num_predict": request.max_output_tokens,
+                "temperature": request.temperature,
+            },
         }
+        if not request.think_enabled:
+            body["think"] = False
         try:
             with httpx.Client(timeout=request.timeout_seconds) as client:
                 response = client.post(url, json=body)

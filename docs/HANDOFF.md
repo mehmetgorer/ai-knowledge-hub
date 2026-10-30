@@ -349,7 +349,7 @@ POST /collections/{collection_id}/search
 - **`POST /collections/{collection_id}/ask`** (JWT): `{ "question", "top_k?" }` → `{ "answer", "sources", "model", "grounded" }`.
 - Pipeline (**`ai_knowledge_hub_api.rag`**): validate → ownership → **`semantic_search_collection`** (unchanged ranking) → bounded evidence **S1…Sn** → **`db.commit()`** before Ollama → JSON **`/api/chat`** via **`httpx`** → strict citation validation.
 - **Ollama** (server-side only): **`OLLAMA_BASE_URL`**, **`OLLAMA_MODEL`** (default **`qwen3:1.7b`**), **`OLLAMA_REQUEST_TIMEOUT_SECONDS`**, **`RAG_MAX_EVIDENCE_*`**, **`RAG_MAX_OUTPUT_TOKENS`**. No paid/cloud inference; prompts and document text are not logged.
-- **`grounded: true`** only when cited **Sx** ids match retrieved evidence and appear in the answer; invalid citations → **422**; insufficient evidence → **`grounded: false`** (empty sources); no chunks → safe message without LLM.
+- **`grounded: true`** only when **`evidence_sufficient: true`**, valid **Sx** citations present in the answer, and structural checks pass; invalid combinations → **422**; abstention → **`grounded: false`** (empty sources); no chunks → safe message without LLM.
 - Errors: **503** Ollama offline/timeout/missing model; **422** grounding/validation; retrieval errors same as search.
 - Tests: **`test_ask.py`**, **`test_rag_*.py`**, **`test_ask_integration.py`** (mocked Ollama; no model download in CI).
 
@@ -367,9 +367,17 @@ POST /collections/{collection_id}/ask
 - **`SearchRequestCoordinator`** (separate ref) + **`ask-ui-guards`** for stale collection/question races; no localStorage persistence.
 - Unit tests: **`lib/ask/*.test.ts`**; CI **`npm run test --workspace=web`**.
 
+## Phase 4A.3 — RAG reliability (complete)
+
+- **Prompts:** answers limited to **explicitly stated** passage text; no extrapolated formulas/terms; required JSON field **`evidence_sufficient`** (structural — not factual verification).
+- **Validation:** `evidence_sufficient: false` rejects any citations; `true` requires valid **Sx** markers; prompt states citation checks do **not** guarantee factual correctness.
+- **Ollama:** **`OLLAMA_TEMPERATURE=0`**, **`OLLAMA_THINK_ENABLED=false`** (Qwen3 thinking off when supported), JSON **`format`**, existing token/timeout limits.
+- **Retrieval threshold:** optional **`RAG_WEAK_RETRIEVAL_BEST_DISTANCE_ABOVE`** (default **disabled**); calibration tests in **`test_rag_relevance_calibration.py`** show aggressive cutoffs harm cross-language matches — not enabled in production defaults.
+- Tests: **`test_rag_reliability.py`**, **`test_rag_relevance_calibration.py`**, extended **`test_rag_validation.py`**, **`test_ask_integration.py`**.
+
 ## Recommended next steps
 
-1. Dashboard Ask UI wired to **`POST .../ask`**.
+1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.
 2. Optional scheduled or manual workflow for `pytest -m integration` with Docker.
 3. Document production `DATABASE_URL` for managed Postgres.
 

@@ -74,8 +74,21 @@ def _mock_embed_query(
     return _basis_vector(0)
 
 
-def _llm_payload(*, answer: str, cited: list[str]) -> str:
-    return json.dumps({"answer": answer, "cited_source_ids": cited})
+def _llm_payload(
+    *,
+    answer: str,
+    cited: list[str],
+    evidence_sufficient: bool | None = None,
+) -> str:
+    if evidence_sufficient is None:
+        evidence_sufficient = bool(cited)
+    return json.dumps(
+        {
+            "answer": answer,
+            "cited_source_ids": cited,
+            "evidence_sufficient": evidence_sufficient,
+        },
+    )
 
 
 @pytest.fixture
@@ -766,7 +779,11 @@ def test_ask_invalid_grounding_raises(
     engine = create_engine(get_settings().resolved_database_url)
 
     def bad_llm(_request: OllamaChatRequest) -> str:
-        return _llm_payload(answer="Missing marker", cited=["S1"])
+        return _llm_payload(
+            answer="Missing marker",
+            cited=["S1"],
+            evidence_sufficient=True,
+        )
 
     with Session(engine) as session:
         collection = Collection(owner_subject="owner-a", name="Invalid")
@@ -796,3 +813,200 @@ def test_ask_invalid_grounding_raises(
                 top_k=5,
                 generate_json=bad_llm,
             )
+
+
+@pytest.mark.integration
+def test_ask_rejects_insufficient_flag_with_citations(
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+
+    def bad_llm(_request: OllamaChatRequest) -> str:
+        return json.dumps(
+            {
+                "answer": "Still citing [S1].",
+                "cited_source_ids": ["S1"],
+                "evidence_sufficient": False,
+            },
+        )
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="Conflict")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="a.txt",
+            chunk_index=0,
+            text="Only SQL JOIN is described here.",
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        with (
+            patch(
+                "ai_knowledge_hub_api.search.service.embed_search_query",
+                side_effect=_mock_embed_query,
+            ),
+            pytest.raises(RagGroundingError),
+        ):
+            ask_collection_question(
+                session,
+                collection_id=collection.id,
+                owner_subject="owner-a",
+                question="What is JOIN?",
+                top_k=5,
+                generate_json=bad_llm,
+            )
+
+
+@pytest.mark.integration
+def test_ask_abstains_when_fact_absent_from_related_passage(
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+
+    def abstaining_llm(_request: OllamaChatRequest) -> str:
+        return json.dumps(
+            {
+                "answer": "The sources do not mention the chain rule.",
+                "cited_source_ids": [],
+                "evidence_sufficient": False,
+            },
+        )
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="Absent fact")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="machine-learning.txt",
+            chunk_index=0,
+            text="Neural networks use layers and backpropagation.",
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        with patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
+        ):
+            result = ask_collection_question(
+                session,
+                collection_id=collection.id,
+                owner_subject="owner-a",
+                question="Explain the chain rule in backpropagation.",
+                top_k=5,
+                generate_json=abstaining_llm,
+            )
+
+    assert result.grounded is False
+    assert result.sources == ()
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_ask_repeated_question_returns_latest_grounded_answer(
+    auth_env: None,
+    key_pair: Ed25519KeyPair,
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="Repeat")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="database.txt",
+            chunk_index=0,
+            text="SQL JOIN combines rows.",
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        collection_id = str(collection.id)
+
+    calls = {"n": 0}
+
+    def fake_llm(_request: OllamaChatRequest) -> str:
+        calls["n"] += 1
+        return _llm_payload(
+            answer=f"Answer pass {calls['n']} [S1].",
+            cited=["S1"],
+            evidence_sufficient=True,
+        )
+
+    with (
+        patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
+        ),
+        patch("ai_knowledge_hub_api.rag.service.get_default_ollama_client") as mock,
+    ):
+        mock.return_value.complete_json = fake_llm
+        async with _client_for_subject(key_pair, "owner-a") as client:
+            first = await client.post(
+                f"/collections/{collection_id}/ask",
+                json={"question": "What is JOIN?", "top_k": 5},
+            )
+            second = await client.post(
+                f"/collections/{collection_id}/ask",
+                json={"question": "What is JOIN?", "top_k": 5},
+            )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["grounded"] is True
+    assert "pass 2" in second.json()["answer"]
+
+
+@pytest.mark.integration
+def test_ask_passes_temperature_and_think_flags_to_ollama(
+    migrated_ask_database: str,
+) -> None:
+    del migrated_ask_database
+    engine = create_engine(get_settings().resolved_database_url)
+    seen: list[OllamaChatRequest] = []
+
+    def capture_llm(request: OllamaChatRequest) -> str:
+        seen.append(request)
+        return _llm_payload(answer="Ok [S1].", cited=["S1"], evidence_sufficient=True)
+
+    settings = get_settings()
+
+    with Session(engine) as session:
+        collection = Collection(owner_subject="owner-a", name="Ollama opts")
+        session.add(collection)
+        session.flush()
+        _add_ready_chunk(
+            session,
+            collection=collection,
+            filename="a.txt",
+            chunk_index=0,
+            text="Evidence",
+            embedding=_basis_vector(0),
+        )
+        session.commit()
+        with patch(
+            "ai_knowledge_hub_api.search.service.embed_search_query",
+            side_effect=_mock_embed_query,
+        ):
+            ask_collection_question(
+                session,
+                collection_id=collection.id,
+                owner_subject="owner-a",
+                question="Q",
+                top_k=5,
+                settings=settings,
+                generate_json=capture_llm,
+            )
+
+    assert seen
+    assert seen[0].temperature == settings.ollama_temperature
+    assert seen[0].think_enabled is settings.ollama_think_enabled

@@ -40,6 +40,10 @@ def validate_grounded_answer(
     if not isinstance(answer, str) or not answer.strip():
         raise RagGroundingError("Model answer missing or empty")
 
+    evidence_sufficient_raw = payload.get("evidence_sufficient")
+    if not isinstance(evidence_sufficient_raw, bool):
+        raise RagGroundingError("evidence_sufficient must be a boolean")
+
     if cited_raw is None:
         cited_list: list[object] = []
     elif isinstance(cited_raw, list):
@@ -71,15 +75,20 @@ def validate_grounded_answer(
     if unknown_inline:
         raise RagGroundingError("Answer cites source ids not in retrieved evidence")
 
-    if not cited_ids:
-        if inline_ids:
+    if not evidence_sufficient_raw:
+        if cited_ids or inline_ids:
             raise RagGroundingError(
-                "Answer cites sources but cited_source_ids is empty",
+                "evidence_sufficient is false but citations were provided",
             )
         return ValidatedAnswer(
             answer=answer.strip(),
             cited_source_ids=(),
             grounded=False,
+        )
+
+    if not cited_ids:
+        raise RagGroundingError(
+            "evidence_sufficient is true but no cited_source_ids were provided",
         )
 
     extra_inline = inline_ids - set(cited_ids)

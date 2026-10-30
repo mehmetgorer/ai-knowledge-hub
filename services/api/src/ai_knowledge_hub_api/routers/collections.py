@@ -131,6 +131,9 @@ def _rag_config_from_settings(settings: Settings) -> RagConfig:
         max_evidence_passages=min(10, max(1, settings.rag_max_evidence_passages)),
         max_evidence_characters=max(500, settings.rag_max_evidence_characters),
         max_output_tokens=max(64, settings.rag_max_output_tokens),
+        weak_retrieval_best_distance_above=(
+            settings.rag_weak_retrieval_best_distance_above
+        ),
     )
 
 
