@@ -8,14 +8,11 @@ import {
   dashboardMutedTextClassName,
   dashboardPanelClassName,
   dashboardPrimaryButtonClassName,
-  dashboardSecondaryButtonClassName,
-  documentStatusBadgeClassName,
 } from "@/components/dashboard/ui";
 import {
   askCollection,
   deleteDocument,
   fetchDocuments,
-  formatDocumentStatus,
   indexDocument,
   processDocument,
   searchCollection,
@@ -43,14 +40,16 @@ import {
   shouldDisplaySearchState,
 } from "@/lib/search/search-ui-guards";
 import { validateSearchQueryInput } from "@/lib/search/parse-search-response";
+import { buildDeleteConfirmationMessage } from "@/lib/documents/document-ui-actions";
 import {
-  buildDeleteConfirmationMessage,
-  indexActionLabel,
-  processActionLabel,
-  shouldDisableDeleteButton,
-  shouldDisableIndexButton,
-  shouldDisableProcessButton,
-} from "@/lib/documents/document-ui-actions";
+  buildDocumentRowUiModel,
+  DocumentRowActions,
+  DocumentStatusBadge,
+  DocumentStatusHints,
+  type DocumentDeleteFeedback,
+  type DocumentIndexFeedback,
+  type DocumentProcessFeedback,
+} from "./document-row-actions";
 import {
   releaseProcessLock,
   shouldApplyProcessFeedback,
@@ -80,24 +79,6 @@ type DocumentsViewState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "ready"; documents: DocumentRecord[] }
-  | { kind: "error"; message: string };
-
-type DocumentProcessFeedback =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "success"; chunkCount: number }
-  | { kind: "error"; message: string };
-
-type DocumentIndexFeedback =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "success"; embeddedChunkCount: number; embeddingModel: string }
-  | { kind: "error"; message: string };
-
-type DocumentDeleteFeedback =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "success" }
   | { kind: "error"; message: string };
 
 type SearchViewState =
@@ -1262,207 +1243,137 @@ export function CollectionWorkspace(props: CollectionWorkspaceProps) {
 
             {documentsView.kind === "ready" &&
             documentsView.documents.length > 0 ? (
-              <div className="overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-                <table className="min-w-full text-left text-sm">
-                  <caption className="sr-only">
-                    Documents in the selected collection
-                  </caption>
-                  <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
-                    <tr>
-                      <th scope="col" className="px-4 py-2 font-medium">
-                        Name
-                      </th>
-                      <th scope="col" className="px-4 py-2 font-medium">
-                        Size
-                      </th>
-                      <th scope="col" className="px-4 py-2 font-medium">
-                        Status
-                      </th>
-                      <th scope="col" className="px-4 py-2 font-medium">
-                        Uploaded
-                      </th>
-                      <th scope="col" className="px-4 py-2 font-medium">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {documentsView.documents.map((document) => {
-                      const processLabel = processActionLabel(document.status);
-                      const indexLabel = indexActionLabel(document.status);
-                      const processFeedback =
-                        processFeedbackByDocumentId[document.id] ?? {
-                          kind: "idle" as const,
-                        };
-                      const indexFeedback =
-                        indexFeedbackByDocumentId[document.id] ?? {
-                          kind: "idle" as const,
-                        };
-                      const deleteFeedback =
-                        deleteFeedbackByDocumentId[document.id] ?? {
-                          kind: "idle" as const,
-                        };
-                      const rowActionState = {
-                        status: document.status,
-                        processFeedbackKind: processFeedback.kind,
-                        indexFeedbackKind: indexFeedback.kind,
-                        deleteFeedbackKind: deleteFeedback.kind,
-                        documentsReady: documentsView.kind === "ready",
-                      };
-                      const disableProcess =
-                        shouldDisableProcessButton(rowActionState);
-                      const disableIndex =
-                        shouldDisableIndexButton(rowActionState);
-                      const disableDelete =
-                        shouldDisableDeleteButton(rowActionState);
-
-                      return (
-                      <tr key={document.id}>
-                        <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
+              <>
+                <ul
+                  className="space-y-3 md:hidden"
+                  aria-label="Documents in the selected collection"
+                >
+                  {documentsView.documents.map((document) => {
+                    const documentsReady = documentsView.kind === "ready";
+                    const rowUi = buildDocumentRowUiModel(
+                      document,
+                      documentsReady,
+                      processFeedbackByDocumentId,
+                      indexFeedbackByDocumentId,
+                      deleteFeedbackByDocumentId,
+                    );
+                    return (
+                      <li
+                        key={document.id}
+                        className="rounded-md border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                      >
+                        <p className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-50">
                           {document.original_filename}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                          {formatFileSize(document.size_bytes)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={documentStatusBadgeClassName(
-                              document.status,
-                            )}
-                          >
-                            {formatDocumentStatus(document.status)}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <DocumentStatusBadge status={document.status} />
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                            {formatFileSize(document.size_bytes)}
                           </span>
-                          {document.status === "PROCESSED" ? (
-                            <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-500">
-                              Chunks stored — index to enable search
-                            </span>
-                          ) : null}
-                          {document.status === "READY" ? (
-                            <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-500">
-                              Indexed — reprocess unavailable
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                          {formatTimestamp(document.created_at)}
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <div className="flex min-w-[8rem] flex-col gap-1.5">
-                            {processLabel ? (
-                              <button
-                                type="button"
-                                className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
-                                disabled={disableProcess}
-                                aria-busy={processFeedback.kind === "loading"}
-                                onClick={() => {
+                        </div>
+                        <DocumentStatusHints status={document.status} />
+                        <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                          Uploaded {formatTimestamp(document.created_at)}
+                        </p>
+                        <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                          <DocumentRowActions
+                            compact
+                            document={document}
+                            model={rowUi}
+                            onProcess={() => {
+                              void runProcessDocument(document.id);
+                            }}
+                            onIndex={() => {
+                              void runIndexDocument(document.id);
+                            }}
+                            onDelete={() => {
+                              void runDeleteDocument(
+                                document.id,
+                                document.original_filename,
+                              );
+                            }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="hidden overflow-x-auto rounded-md border border-zinc-200 md:block dark:border-zinc-800">
+                  <table className="min-w-full text-left text-sm">
+                    <caption className="sr-only">
+                      Documents in the selected collection
+                    </caption>
+                    <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+                      <tr>
+                        <th scope="col" className="px-4 py-2 font-medium">
+                          Name
+                        </th>
+                        <th scope="col" className="px-4 py-2 font-medium">
+                          Size
+                        </th>
+                        <th scope="col" className="px-4 py-2 font-medium">
+                          Status
+                        </th>
+                        <th scope="col" className="px-4 py-2 font-medium">
+                          Uploaded
+                        </th>
+                        <th scope="col" className="px-4 py-2 font-medium">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {documentsView.documents.map((document) => {
+                        const documentsReady = documentsView.kind === "ready";
+                        const rowUi = buildDocumentRowUiModel(
+                          document,
+                          documentsReady,
+                          processFeedbackByDocumentId,
+                          indexFeedbackByDocumentId,
+                          deleteFeedbackByDocumentId,
+                        );
+
+                        return (
+                          <tr key={document.id}>
+                            <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
+                              {document.original_filename}
+                            </td>
+                            <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                              {formatFileSize(document.size_bytes)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <DocumentStatusBadge status={document.status} />
+                              <DocumentStatusHints status={document.status} />
+                            </td>
+                            <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                              {formatTimestamp(document.created_at)}
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <DocumentRowActions
+                                document={document}
+                                model={rowUi}
+                                onProcess={() => {
                                   void runProcessDocument(document.id);
                                 }}
-                              >
-                                {processFeedback.kind === "loading"
-                                  ? "Processing…"
-                                  : processLabel}
-                              </button>
-                            ) : document.status === "PROCESSING" ? (
-                              <span
-                                className="text-xs text-zinc-600 dark:text-zinc-400"
-                                role="status"
-                              >
-                                Processing…
-                              </span>
-                            ) : null}
-                            {indexLabel ? (
-                              <button
-                                type="button"
-                                className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
-                                disabled={disableIndex}
-                                aria-busy={indexFeedback.kind === "loading"}
-                                onClick={() => {
+                                onIndex={() => {
                                   void runIndexDocument(document.id);
                                 }}
-                              >
-                                {indexFeedback.kind === "loading"
-                                  ? "Indexing…"
-                                  : indexLabel}
-                              </button>
-                            ) : document.status === "INDEXING" ? (
-                              <span
-                                className="text-xs text-zinc-600 dark:text-zinc-400"
-                                role="status"
-                              >
-                                Indexing…
-                              </span>
-                            ) : null}
-                            {processFeedback.kind === "success" ? (
-                              <p
-                                className="text-xs text-green-700 dark:text-green-400"
-                                role="status"
-                              >
-                                {processFeedback.chunkCount} chunk
-                                {processFeedback.chunkCount === 1 ? "" : "s"}{" "}
-                                from latest process run
-                              </p>
-                            ) : null}
-                            {indexFeedback.kind === "success" ? (
-                              <p
-                                className="text-xs text-green-700 dark:text-green-400"
-                                role="status"
-                              >
-                                {indexFeedback.embeddedChunkCount} embedding
-                                {indexFeedback.embeddedChunkCount === 1
-                                  ? ""
-                                  : "s"}{" "}
-                                ({indexFeedback.embeddingModel}) from latest
-                                index run
-                              </p>
-                            ) : null}
-                            {processFeedback.kind === "error" ? (
-                              <p
-                                className="text-xs text-red-600 dark:text-red-400"
-                                role="alert"
-                              >
-                                {processFeedback.message}
-                              </p>
-                            ) : null}
-                            {indexFeedback.kind === "error" ? (
-                              <p
-                                className="text-xs text-red-600 dark:text-red-400"
-                                role="alert"
-                              >
-                                {indexFeedback.message}
-                              </p>
-                            ) : null}
-                            <button
-                              type="button"
-                              className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
-                              disabled={disableDelete}
-                              aria-busy={deleteFeedback.kind === "loading"}
-                              onClick={() => {
-                                void runDeleteDocument(
-                                  document.id,
-                                  document.original_filename,
-                                );
-                              }}
-                            >
-                              {deleteFeedback.kind === "loading"
-                                ? "Deleting…"
-                                : "Delete"}
-                            </button>
-                            {deleteFeedback.kind === "error" ? (
-                              <p
-                                className="text-xs text-red-600 dark:text-red-400"
-                                role="alert"
-                              >
-                                {deleteFeedback.message}
-                              </p>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                onDelete={() => {
+                                  void runDeleteDocument(
+                                    document.id,
+                                    document.original_filename,
+                                  );
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : null}
           </div>
           </div>

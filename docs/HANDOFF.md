@@ -440,6 +440,13 @@ POST /collections/{collection_id}/ask
 - **Desktop:** Sidebar unchanged; workspace `max-w-3xl`, tighter padding, Ask → Search → Documents tab panel order with `role="tablist"` / `tabpanel` wiring.
 - **Shared:** `CollectionCreateForm` used by sidebar and mobile; one `selectedCollectionId` in `DashboardShell`.
 
+## Phase 5C.2 — Mobile documents list (complete)
+
+- **Breakpoint:** Below **`md` (768px)**, document rows render as vertical **cards** (`md:hidden`); **table unchanged** from 768px up (`hidden md:block`).
+- **Shared logic:** `document-row-actions.tsx` — `buildDocumentRowUiModel`, `DocumentRowActions`, `DocumentStatusBadge`, `DocumentStatusHints`; same `documentsView`, feedback maps, and `runProcessDocument` / `runIndexDocument` / `runDeleteDocument` handlers as the table.
+- **Mobile card:** Filename (`break-words`), status badge, file size, upload date, full-width Process / Index / Delete with existing guards and feedback messages.
+- **Manual:** Verify Documents tab at **375px**, **768px**, and **1440px** in browser DevTools (not automated in CI).
+
 ## Recommended next steps
 
 1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.
