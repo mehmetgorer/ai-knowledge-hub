@@ -424,6 +424,15 @@ POST /collections/{collection_id}/ask
 - Dashboard: per-row **Delete** with **`window.confirm`**, loading/disabled guards, list refresh, upload-area success message; search/ask pending results invalidated after delete.
 - Tests: **`test_document_deletion.py`**, **`test_document_deletion_integration.py`**, **`test_documents.py`** (DELETE 401), **`document-ui-actions.test.ts`**.
 
+## Phase 5C — Professional dashboard redesign (complete)
+
+- **Shell:** Full-width workspace (`DashboardShell`) with compact workspace header (account + sign out), **collection sidebar** (single selection + create), tabbed main area (**Ask AI** default, **Semantic Search**, **Documents**), footer **Developer diagnostics** (`Verify Python API` in `<details>`).
+- **Design:** Dark-first zinc surfaces, violet accent, Geist body font (`globals.css`), shared classes in **`components/dashboard/ui.ts`**; light mode via `prefers-color-scheme`.
+- **State:** One collection list fetch in the shell; **`CollectionWorkspace`** (`documents-panel.tsx`) receives `selectedCollectionId` + `activeTab`; collection switch resets search/ask/process feedback via existing lifecycle guards (no duplicate collection dropdown).
+- **UX:** Status badges on documents; Ask sources expandable with retrieval distance labeled as rank (not confidence); READY documents show “reprocess unavailable” in status column only.
+- **Unchanged:** All API calls, auth, RAG/Ask contract, deletion confirmation, search/ask coordinators, unit tests (41 passing).
+- **Manual:** Responsive layout (1440 / 768 / 390 px) not screenshot-verified in CI — verify in browser locally.
+
 ## Recommended next steps
 
 1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.

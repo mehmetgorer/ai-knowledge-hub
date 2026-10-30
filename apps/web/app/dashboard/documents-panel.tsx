@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
-  authButtonClassName,
-  authFieldClassName,
-  authLabelClassName,
-} from "@/components/auth-shell";
+  dashboardFieldClassName,
+  dashboardLabelClassName,
+  dashboardMutedTextClassName,
+  dashboardPanelClassName,
+  dashboardPrimaryButtonClassName,
+  dashboardSecondaryButtonClassName,
+  documentStatusBadgeClassName,
+} from "@/components/dashboard/ui";
 import {
   askCollection,
   deleteDocument,
-  fetchCollections,
   fetchDocuments,
   formatDocumentStatus,
   indexDocument,
@@ -19,7 +22,6 @@ import {
   uploadDocument,
   validateDocumentFile,
   type AskSource,
-  type CollectionRecord,
   type DocumentRecord,
   type SearchMatch,
   SEARCH_TOP_K_OPTIONS,
@@ -56,10 +58,16 @@ import {
   tryAcquireProcessLock,
 } from "@/lib/documents/processing-ui-guards";
 
-type CollectionsLoadState =
-  | { kind: "loading" }
-  | { kind: "ready"; collections: CollectionRecord[] }
-  | { kind: "error"; message: string };
+import type { CollectionsLoadState } from "./collection-sidebar";
+
+export type WorkspaceTab = "ask" | "search" | "documents";
+
+export type CollectionWorkspaceProps = {
+  selectedCollectionId: string;
+  collectionsState: CollectionsLoadState;
+  activeTab: WorkspaceTab;
+  onReloadCollections: (options?: { silent?: boolean }) => Promise<void>;
+};
 
 type DocumentsLoadState =
   | { kind: "idle" }
@@ -185,24 +193,21 @@ function documentsViewForSelection(
   return { kind: "ready", documents: documentsState.documents };
 }
 
-export function DocumentsPanel() {
-  const collectionFieldId = useId();
+export function CollectionWorkspace(props: CollectionWorkspaceProps) {
+  const { selectedCollectionId, collectionsState, activeTab } = props;
   const fileFieldId = useId();
   const searchQueryFieldId = useId();
   const searchTopKFieldId = useId();
   const askQuestionFieldId = useId();
   const askTopKFieldId = useId();
 
-  const [collectionsState, setCollectionsState] = useState<CollectionsLoadState>(
-    { kind: "loading" },
-  );
-  const [selectedCollectionId, setSelectedCollectionId] = useState("");
   const documentsRequestIdRef = useRef(0);
   const searchCoordinatorRef = useRef(new SearchRequestCoordinator());
   const askCoordinatorRef = useRef(new SearchRequestCoordinator());
   const processingDocumentIdsRef = useRef<Set<string>>(new Set());
   const deletingDocumentIdsRef = useRef<Set<string>>(new Set());
   const selectedCollectionIdRef = useRef(selectedCollectionId);
+  const collectionSwitchRef = useRef<string | null>(null);
 
   useEffect(() => {
     selectedCollectionIdRef.current = selectedCollectionId;
@@ -280,48 +285,6 @@ export function DocumentsPanel() {
     const requestId = ++documentsRequestIdRef.current;
     void runDocumentsFetch(selectedCollectionId, requestId);
   }, [selectedCollectionId, runDocumentsFetch]);
-
-  const loadCollections = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) {
-      setCollectionsState({ kind: "loading" });
-    }
-    const result = await fetchCollections();
-    if (!result.ok) {
-      setCollectionsState({ kind: "error", message: result.error.message });
-      return;
-    }
-    setCollectionsState({ kind: "ready", collections: result.collections });
-    setSelectedCollectionId((current) => {
-      if (
-        current &&
-        result.collections.some((collection) => collection.id === current)
-      ) {
-        return current;
-      }
-      return result.collections[0]?.id ?? "";
-    });
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const result = await fetchCollections();
-      if (cancelled) {
-        return;
-      }
-      if (!result.ok) {
-        setCollectionsState({ kind: "error", message: result.error.message });
-        return;
-      }
-      setCollectionsState({ kind: "ready", collections: result.collections });
-      setSelectedCollectionId(result.collections[0]?.id ?? "");
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!selectedCollectionId) {
@@ -469,6 +432,31 @@ export function DocumentsPanel() {
   const invalidatePendingAsk = useCallback(() => {
     askCoordinatorRef.current.invalidatePending();
   }, []);
+
+  useEffect(() => {
+    if (collectionSwitchRef.current === null) {
+      collectionSwitchRef.current = selectedCollectionId;
+      return;
+    }
+    if (collectionSwitchRef.current === selectedCollectionId) {
+      return;
+    }
+    collectionSwitchRef.current = selectedCollectionId;
+    searchCoordinatorRef.current.invalidatePending();
+    askCoordinatorRef.current.invalidatePending();
+    setProcessFeedbackByDocumentId({});
+    setIndexFeedbackByDocumentId({});
+    setDeleteFeedbackByDocumentId({});
+    setSearchQuery("");
+    setSubmittedSearchQuery("");
+    setSearchState({ kind: "idle" });
+    setAskQuestion("");
+    setSubmittedAskQuestion("");
+    setAskState({ kind: "idle" });
+    setSelectedFile(null);
+    setUploadError(null);
+    setUploadSuccess(null);
+  }, [selectedCollectionId]);
 
   const runDeleteDocument = useCallback(
     async (documentId: string, originalFilename: string) => {
@@ -757,100 +745,34 @@ export function DocumentsPanel() {
   );
 
   return (
-    <section
-      className="mt-8 space-y-6 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800"
-      aria-labelledby="documents-heading"
-    >
-      <div>
-        <h2
-          id="documents-heading"
-          className="text-lg font-medium text-zinc-900 dark:text-zinc-50"
-        >
-          Documents
-        </h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Upload PDF, TXT, or MD files (max 10 MB) into a collection.{" "}
-          <strong className="font-medium">Process</strong> extracts text and
-          stores chunks; <strong className="font-medium">Index</strong> runs
-          local embedding on processed chunks (first run may take longer while
-          the model initializes). Use semantic search to find passages, or Ask
-          AI for a grounded local answer with citations — not guaranteed
-          correct.
-        </p>
-      </div>
-
+    <div className="mx-auto w-full max-w-4xl">
       {collectionsState.kind === "loading" ? (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400" role="status">
-          Loading collections…
+        <p className={dashboardMutedTextClassName} role="status">
+          Loading workspace…
         </p>
       ) : null}
 
-      {collectionsState.kind === "error" ? (
-        <div className="space-y-3">
-          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-            {collectionsState.message}
-          </p>
-          <button
-            type="button"
-            className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
-            onClick={() => {
-              void loadCollections();
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
-
-      {collectionsState.kind === "ready" &&
-      collectionsState.collections.length === 0 ? (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400" role="status">
-          Create a collection above before uploading documents.
+      {!collectionsReady && collectionsState.kind !== "loading" ? (
+        <p className={dashboardMutedTextClassName} role="status">
+          Create or select a collection in the sidebar to use Ask AI, semantic
+          search, and documents.
         </p>
       ) : null}
 
       {collectionsReady ? (
         <>
+          <div
+            className={
+              activeTab === "documents"
+                ? "space-y-4"
+                : "hidden"
+            }
+            aria-hidden={activeTab !== "documents"}
+          >
           <form className="space-y-4" onSubmit={handleUpload}>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor={collectionFieldId} className={authLabelClassName}>
-                Collection
-              </label>
-              <select
-                id={collectionFieldId}
-                name="collectionId"
-                value={selectedCollectionId}
-                disabled={isUploading}
-                onChange={(event) => {
-                  invalidatePendingSearch();
-                  invalidatePendingAsk();
-                  setSelectedCollectionId(event.target.value);
-                  setProcessFeedbackByDocumentId({});
-                  setIndexFeedbackByDocumentId({});
-                  setDeleteFeedbackByDocumentId({});
-                  setSearchQuery("");
-                  setSubmittedSearchQuery("");
-                  setSearchState({ kind: "idle" });
-                  setAskQuestion("");
-                  setSubmittedAskQuestion("");
-                  setAskState({ kind: "idle" });
-                  setSelectedFile(null);
-                  setUploadError(null);
-                  setUploadSuccess(null);
-                }}
-                className={authFieldClassName}
-              >
-                {collectionsState.collections.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={fileFieldId} className={authLabelClassName}>
-                File
+              <label htmlFor={fileFieldId} className={dashboardLabelClassName}>
+                Upload file
               </label>
               <input
                 id={fileFieldId}
@@ -871,7 +793,7 @@ export function DocumentsPanel() {
                     }
                   }
                 }}
-                className={`${authFieldClassName} file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900 dark:file:bg-zinc-800 dark:file:text-zinc-50`}
+                className={`${dashboardFieldClassName} file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900 dark:file:bg-zinc-800 dark:file:text-zinc-50`}
               />
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 PDF, TXT, or MD · maximum 10 MB
@@ -886,7 +808,7 @@ export function DocumentsPanel() {
                 !selectedFile ||
                 documentsView.kind === "loading"
               }
-              className={`${authButtonClassName} w-full sm:w-auto sm:min-w-[9rem]`}
+              className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
             >
               {isUploading ? "Uploading…" : "Upload"}
             </button>
@@ -906,16 +828,24 @@ export function DocumentsPanel() {
               {uploadSuccess}
             </p>
           ) : null}
+          </div>
 
-          <div className="space-y-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+          <div
+            className={
+              activeTab === "search"
+                ? `space-y-4 ${dashboardPanelClassName} p-5 sm:p-6`
+                : "hidden"
+            }
+            aria-hidden={activeTab !== "search"}
+          >
             <div>
-              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
                 Semantic search
-              </h3>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                Searches indexed (Ready) documents in the selected collection
-                only. Results are relevant passages ranked by cosine distance
-                (lower is closer) — not answer confidence or generated text.
+              </h2>
+              <p className={`mt-1 ${dashboardMutedTextClassName} text-xs`}>
+                Indexed (Ready) documents in the active collection only.
+                Cosine distance ranks retrieval similarity (lower is closer) —
+                not answer confidence.
               </p>
             </div>
             <form
@@ -928,7 +858,7 @@ export function DocumentsPanel() {
               <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
                 <label
                   htmlFor={searchQueryFieldId}
-                  className={authLabelClassName}
+                  className={dashboardLabelClassName}
                 >
                   Query
                 </label>
@@ -949,12 +879,12 @@ export function DocumentsPanel() {
                     }
                     setSearchQuery(event.target.value);
                   }}
-                  className={authFieldClassName}
+                  className={dashboardFieldClassName}
                   autoComplete="off"
                 />
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-auto">
-                <label htmlFor={searchTopKFieldId} className={authLabelClassName}>
+                <label htmlFor={searchTopKFieldId} className={dashboardLabelClassName}>
                   Results
                 </label>
                 <select
@@ -965,7 +895,7 @@ export function DocumentsPanel() {
                   onChange={(event) => {
                     setSearchTopK(Number(event.target.value) as 3 | 5 | 10);
                   }}
-                  className={authFieldClassName}
+                  className={dashboardFieldClassName}
                 >
                   {SEARCH_TOP_K_OPTIONS.map((value) => (
                     <option key={value} value={value}>
@@ -981,7 +911,7 @@ export function DocumentsPanel() {
                   queryValid: validateSearchQueryInput(searchQuery) === null,
                   inFlight: searchState.kind === "loading",
                 })}
-                className={`${authButtonClassName} w-full sm:w-auto sm:min-w-[9rem]`}
+                className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
                 aria-busy={searchState.kind === "loading"}
               >
                 {searchState.kind === "loading" ? "Searching…" : "Search"}
@@ -1075,15 +1005,22 @@ export function DocumentsPanel() {
             ) : null}
           </div>
 
-          <div className="space-y-3 rounded-md border border-violet-200 bg-violet-50/40 p-4 dark:border-violet-900/60 dark:bg-violet-950/20">
+          <div
+            className={
+              activeTab === "ask"
+                ? `space-y-5 ${dashboardPanelClassName} p-5 sm:p-6`
+                : "hidden"
+            }
+            aria-hidden={activeTab !== "ask"}
+          >
             <div>
-              <h3 className="text-sm font-medium text-violet-950 dark:text-violet-100">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
                 Ask AI
-              </h3>
-              <p className="mt-1 text-xs text-violet-900/80 dark:text-violet-200/80">
-                Generates a concise answer from indexed passages in the selected
-                collection using your local Ollama model. Cosine distance on
-                sources is retrieval rank only — not answer confidence.
+              </h2>
+              <p className={`mt-1 ${dashboardMutedTextClassName} text-sm`}>
+                Grounded answers from indexed passages via your local Ollama
+                model. Citations link to source chunks — not automated fact
+                checking.
               </p>
             </div>
             <form
@@ -1096,14 +1033,14 @@ export function DocumentsPanel() {
               <div className="flex flex-col gap-1.5">
                 <label
                   htmlFor={askQuestionFieldId}
-                  className={authLabelClassName}
+                  className={dashboardLabelClassName}
                 >
                   Question
                 </label>
                 <textarea
                   id={askQuestionFieldId}
                   name="askQuestion"
-                  rows={3}
+                  rows={4}
                   value={askQuestion}
                   disabled={askState.kind === "loading"}
                   onChange={(event) => {
@@ -1117,12 +1054,12 @@ export function DocumentsPanel() {
                     }
                     setAskQuestion(event.target.value);
                   }}
-                  className={`${authFieldClassName} min-h-[4.5rem] resize-y`}
+                  className={`${dashboardFieldClassName} min-h-[4.5rem] resize-y`}
                 />
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                 <div className="flex w-full flex-col gap-1.5 sm:w-auto">
-                  <label htmlFor={askTopKFieldId} className={authLabelClassName}>
+                  <label htmlFor={askTopKFieldId} className={dashboardLabelClassName}>
                     Context passages
                   </label>
                   <select
@@ -1133,7 +1070,7 @@ export function DocumentsPanel() {
                     onChange={(event) => {
                       setAskTopK(Number(event.target.value) as 3 | 5 | 10);
                     }}
-                    className={authFieldClassName}
+                    className={dashboardFieldClassName}
                   >
                     {SEARCH_TOP_K_OPTIONS.map((value) => (
                       <option key={value} value={value}>
@@ -1149,7 +1086,7 @@ export function DocumentsPanel() {
                     questionValid: validateAskQuestionInput(askQuestion) === null,
                     inFlight: askState.kind === "loading",
                   })}
-                  className={`${authButtonClassName} w-full bg-violet-900 text-white hover:bg-violet-800 dark:bg-violet-700 dark:hover:bg-violet-600 sm:w-auto sm:min-w-[9rem]`}
+                  className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto sm:min-w-[9rem]`}
                   aria-busy={askState.kind === "loading"}
                 >
                   {askState.kind === "loading" ? "Generating…" : "Ask"}
@@ -1234,12 +1171,17 @@ export function DocumentsPanel() {
                             <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                               [{source.source_id}] {source.original_filename} ·
                               chunk {source.chunk_index} · pages{" "}
-                              {formatSearchPageNumbers(source.page_numbers)} ·
-                              distance {formatCosineDistance(source.cosine_distance)}
+                              {formatSearchPageNumbers(source.page_numbers)}
                             </summary>
-                            <p className="border-t border-zinc-200 px-3 py-2 whitespace-pre-wrap text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
-                              {source.text}
-                            </p>
+                            <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                              <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                Retrieval rank (cosine distance):{" "}
+                                {formatCosineDistance(source.cosine_distance)}
+                              </p>
+                              <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                                {source.text}
+                              </p>
+                            </div>
                           </details>
                         </li>
                       ))}
@@ -1249,6 +1191,24 @@ export function DocumentsPanel() {
               </div>
             ) : null}
           </div>
+
+          <div
+            className={
+              activeTab === "documents"
+                ? `space-y-4 ${dashboardPanelClassName} p-5 sm:p-6`
+                : "hidden"
+            }
+            aria-hidden={activeTab !== "documents"}
+          >
+            <div>
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                Documents
+              </h2>
+              <p className={`mt-1 ${dashboardMutedTextClassName} text-xs`}>
+                Process extracts text chunks; Index embeds them locally. Ready
+                documents are searchable and cannot be reprocessed from here.
+              </p>
+            </div>
 
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
@@ -1358,11 +1318,22 @@ export function DocumentsPanel() {
                         <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                           {formatFileSize(document.size_bytes)}
                         </td>
-                        <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                          {formatDocumentStatus(document.status)}
+                        <td className="px-4 py-3">
+                          <span
+                            className={documentStatusBadgeClassName(
+                              document.status,
+                            )}
+                          >
+                            {formatDocumentStatus(document.status)}
+                          </span>
                           {document.status === "PROCESSED" ? (
-                            <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-500">
-                              Text chunks stored; vectors not indexed yet
+                            <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-500">
+                              Chunks stored — index to enable search
+                            </span>
+                          ) : null}
+                          {document.status === "READY" ? (
+                            <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-500">
+                              Indexed — reprocess unavailable
                             </span>
                           ) : null}
                         </td>
@@ -1374,7 +1345,7 @@ export function DocumentsPanel() {
                             {processLabel ? (
                               <button
                                 type="button"
-                                className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                                className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
                                 disabled={disableProcess}
                                 aria-busy={processFeedback.kind === "loading"}
                                 onClick={() => {
@@ -1396,7 +1367,7 @@ export function DocumentsPanel() {
                             {indexLabel ? (
                               <button
                                 type="button"
-                                className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                                className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
                                 disabled={disableIndex}
                                 aria-busy={indexFeedback.kind === "loading"}
                                 onClick={() => {
@@ -1413,10 +1384,6 @@ export function DocumentsPanel() {
                                 role="status"
                               >
                                 Indexing…
-                              </span>
-                            ) : document.status === "READY" ? (
-                              <span className="text-xs text-zinc-500 dark:text-zinc-500">
-                                Indexed (reprocess unavailable)
                               </span>
                             ) : null}
                             {processFeedback.kind === "success" ? (
@@ -1460,7 +1427,7 @@ export function DocumentsPanel() {
                             ) : null}
                             <button
                               type="button"
-                              className={`${authButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
+                              className={`${dashboardSecondaryButtonClassName} w-full px-3 py-1.5 text-xs sm:w-auto`}
                               disabled={disableDelete}
                               aria-busy={deleteFeedback.kind === "loading"}
                               onClick={() => {
@@ -1492,8 +1459,9 @@ export function DocumentsPanel() {
               </div>
             ) : null}
           </div>
+          </div>
         </>
       ) : null}
-    </section>
+    </div>
   );
 }

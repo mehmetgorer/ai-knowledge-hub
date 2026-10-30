@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 
-import { authButtonClassName } from "@/components/auth-shell";
+import {
+  dashboardMutedTextClassName,
+  dashboardPrimaryButtonClassName,
+  dashboardSecondaryButtonClassName,
+} from "@/components/dashboard/ui";
 import { authedApiRequest } from "@/lib/api/client";
 
 type VerifyResult =
@@ -17,9 +21,13 @@ type VerifyResult =
 
 type VerifyPythonApiProps = {
   sessionUserId: string;
+  compact?: boolean;
 };
 
-export function VerifyPythonApi({ sessionUserId }: VerifyPythonApiProps) {
+export function VerifyPythonApi({
+  sessionUserId,
+  compact = false,
+}: VerifyPythonApiProps) {
   const [result, setResult] = useState<VerifyResult>({ kind: "idle" });
 
   async function handleVerify() {
@@ -62,18 +70,32 @@ export function VerifyPythonApi({ sessionUserId }: VerifyPythonApiProps) {
     setResult({ kind: "success", subject, matchesSessionUserId });
   }
 
+  const buttonClass = compact
+    ? dashboardSecondaryButtonClassName
+    : dashboardPrimaryButtonClassName;
+
   return (
-    <section className="mt-8 space-y-3 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800">
-      <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
-        Verify Python API
-      </h2>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+    <section
+      className={
+        compact
+          ? "space-y-2"
+          : "mt-8 space-y-3 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800"
+      }
+      aria-label="Verify Python API"
+    >
+      {!compact ? (
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
+          Verify Python API
+        </h2>
+      ) : null}
+      <p className={`${dashboardMutedTextClassName} text-xs sm:text-sm`}>
         Request a fresh JWT from Neon Auth and call{" "}
-        <code className="text-xs">GET /auth/me</code> on the FastAPI service.
+        <code className="font-mono text-[0.7rem]">GET /auth/me</code> on the
+        FastAPI service.
       </p>
       <button
         type="button"
-        className={authButtonClassName}
+        className={buttonClass}
         disabled={result.kind === "loading"}
         onClick={() => {
           void handleVerify();
