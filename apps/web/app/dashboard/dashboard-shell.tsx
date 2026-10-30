@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
+import { DashboardAppHeader } from "@/components/dashboard/app-header";
 import {
-  dashboardGhostButtonClassName,
-  dashboardMutedTextClassName,
   dashboardTabClassName,
 } from "@/components/dashboard/ui";
 import { fetchCollections } from "@/lib/api/client";
@@ -14,7 +13,7 @@ import {
   type CollectionsLoadState,
 } from "./collection-sidebar";
 import { CollectionWorkspace, type WorkspaceTab } from "./documents-panel";
-import { SignOutButton } from "./sign-out-button";
+import { MobileCollectionNav } from "./mobile-collection-nav";
 import { VerifyPythonApi } from "./verify-python-api";
 
 type DashboardShellProps = {
@@ -22,7 +21,18 @@ type DashboardShellProps = {
   sessionUserId: string;
 };
 
+const WORKSPACE_TABS: {
+  id: WorkspaceTab;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { id: "ask", label: "Ask AI", shortLabel: "Ask" },
+  { id: "search", label: "Semantic Search", shortLabel: "Search" },
+  { id: "documents", label: "Documents", shortLabel: "Docs" },
+];
+
 export function DashboardShell(props: DashboardShellProps) {
+  const tabListId = useId();
   const [collectionsState, setCollectionsState] = useState<CollectionsLoadState>(
     { kind: "loading" },
   );
@@ -74,108 +84,78 @@ export function DashboardShell(props: DashboardShellProps) {
     };
   }, []);
 
-  const selectedCollectionName =
-    collectionsState.kind === "ready"
-      ? collectionsState.collections.find(
-          (collection) => collection.id === selectedCollectionId,
-        )?.name
-      : undefined;
+  const collectionNavProps = {
+    loadState: collectionsState,
+    selectedCollectionId,
+    onSelectCollection: setSelectedCollectionId,
+    onReloadCollections: loadCollections,
+    nameInput: collectionNameInput,
+    onNameInputChange: setCollectionNameInput,
+    formError: collectionFormError,
+    onFormErrorChange: setCollectionFormError,
+    isCreating: isCreatingCollection,
+    onCreatingChange: setIsCreatingCollection,
+  };
 
   return (
-    <div className="flex min-h-[calc(100vh-3.25rem)] flex-col bg-zinc-50/80 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200/80 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wider text-violet-700 dark:text-violet-300">
-              Workspace
-            </p>
-            <h1 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-              AI Knowledge Hub
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <p
-              className={`${dashboardMutedTextClassName} max-w-[14rem] truncate text-xs sm:max-w-xs sm:text-sm`}
-              title={props.userLabel}
-            >
-              {props.userLabel}
-            </p>
-            <SignOutButton variant="ghost" />
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-dvh flex-col bg-zinc-50/80 dark:bg-zinc-950">
+      <DashboardAppHeader userLabel={props.userLabel} />
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <CollectionSidebar
-          loadState={collectionsState}
-          selectedCollectionId={selectedCollectionId}
-          onSelectCollection={setSelectedCollectionId}
-          onReloadCollections={loadCollections}
-          nameInput={collectionNameInput}
-          onNameInputChange={setCollectionNameInput}
-          formError={collectionFormError}
-          onFormErrorChange={setCollectionFormError}
-          isCreating={isCreatingCollection}
-          onCreatingChange={setIsCreatingCollection}
-        />
+        <CollectionSidebar {...collectionNavProps} />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="border-b border-zinc-200/80 bg-white/60 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950/40 sm:px-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <p className={dashboardMutedTextClassName}>
-                  Active collection
-                </p>
-                <p className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                  {selectedCollectionName ?? "None selected"}
-                </p>
-              </div>
-              <nav
-                className="flex flex-wrap gap-1 rounded-xl border border-zinc-200/80 bg-zinc-100/80 p-1 dark:border-zinc-800 dark:bg-zinc-900/60"
-                aria-label="Workspace views"
-              >
-                {(
-                  [
-                    ["ask", "Ask AI"],
-                    ["search", "Semantic Search"],
-                    ["documents", "Documents"],
-                  ] as const
-                ).map(([tab, label]) => (
+          <div className="shrink-0 border-b border-zinc-200/80 bg-white/70 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/50 sm:px-5">
+            <nav
+              className="grid w-full grid-cols-3 gap-1 rounded-lg border border-zinc-200/80 bg-zinc-100/90 p-1 dark:border-zinc-800 dark:bg-zinc-900/60 lg:inline-grid lg:max-w-xl"
+              role="tablist"
+              aria-label="Workspace views"
+              id={tabListId}
+            >
+              {WORKSPACE_TABS.map((tab) => {
+                const selected = activeTab === tab.id;
+                return (
                   <button
-                    key={tab}
+                    key={tab.id}
                     type="button"
-                    className={dashboardTabClassName(activeTab === tab)}
-                    aria-current={activeTab === tab ? "page" : undefined}
+                    role="tab"
+                    id={`${tabListId}-tab-${tab.id}`}
+                    aria-selected={selected}
+                    aria-controls={`${tabListId}-panel-${tab.id}`}
+                    tabIndex={selected ? 0 : -1}
+                    className={`${dashboardTabClassName(selected)} min-w-0 truncate px-2 py-2 text-center sm:px-3`}
                     onClick={() => {
-                      setActiveTab(tab);
+                      setActiveTab(tab.id);
                     }}
                   >
-                    {label}
+                    <span className="sm:hidden">{tab.shortLabel}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
                   </button>
-                ))}
-              </nav>
+                );
+              })}
+            </nav>
+
+            <div className="mt-2 lg:hidden">
+              <MobileCollectionNav {...collectionNavProps} />
             </div>
           </div>
 
-          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-5 sm:py-5">
             <CollectionWorkspace
               selectedCollectionId={selectedCollectionId}
               collectionsState={collectionsState}
               activeTab={activeTab}
               onReloadCollections={loadCollections}
+              tabListId={tabListId}
             />
           </main>
 
-          <footer className="border-t border-zinc-200/80 bg-zinc-50/50 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950/60 sm:px-6">
+          <footer className="shrink-0 border-t border-zinc-200/80 bg-zinc-50/50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950/60 sm:px-5">
             <details className="group max-w-3xl">
-              <summary
-                className={`${dashboardGhostButtonClassName} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
-              >
-                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 group-open:text-zinc-700 dark:text-zinc-400 dark:group-open:text-zinc-200">
-                  Developer diagnostics
-                </span>
+              <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wide text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 dark:text-zinc-400 [&::-webkit-details-marker]:hidden">
+                Developer diagnostics
               </summary>
-              <div className="mt-3">
+              <div className="mt-2">
                 <VerifyPythonApi sessionUserId={props.sessionUserId} compact />
               </div>
             </details>

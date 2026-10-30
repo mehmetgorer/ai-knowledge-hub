@@ -433,6 +433,13 @@ POST /collections/{collection_id}/ask
 - **Unchanged:** All API calls, auth, RAG/Ask contract, deletion confirmation, search/ask coordinators, unit tests (41 passing).
 - **Manual:** Responsive layout (1440 / 768 / 390 px) not screenshot-verified in CI — verify in browser locally.
 
+## Phase 5C.1 — Responsive dashboard polish (complete)
+
+- **Single header on `/dashboard`:** `ConditionalSiteHeader` hides global marketing nav; `DashboardAppHeader` shows product link, account (sm+), and sign out only. Homepage and `/auth/*` keep the public header.
+- **Mobile collection UX:** Sidebar `hidden lg:flex`; compact **collection `<select>`** + collapsible **New collection** under tabs (`MobileCollectionNav`). Tabs first (Ask default) so Ask AI appears above the fold on ~375px widths.
+- **Desktop:** Sidebar unchanged; workspace `max-w-3xl`, tighter padding, Ask → Search → Documents tab panel order with `role="tablist"` / `tabpanel` wiring.
+- **Shared:** `CollectionCreateForm` used by sidebar and mobile; one `selectedCollectionId` in `DashboardShell`.
+
 ## Recommended next steps
 
 1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.

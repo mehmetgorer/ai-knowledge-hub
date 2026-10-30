@@ -67,6 +67,7 @@ export type CollectionWorkspaceProps = {
   collectionsState: CollectionsLoadState;
   activeTab: WorkspaceTab;
   onReloadCollections: (options?: { silent?: boolean }) => Promise<void>;
+  tabListId: string;
 };
 
 type DocumentsLoadState =
@@ -194,7 +195,7 @@ function documentsViewForSelection(
 }
 
 export function CollectionWorkspace(props: CollectionWorkspaceProps) {
-  const { selectedCollectionId, collectionsState, activeTab } = props;
+  const { selectedCollectionId, collectionsState, activeTab, tabListId } = props;
   const fileFieldId = useId();
   const searchQueryFieldId = useId();
   const searchTopKFieldId = useId();
@@ -745,7 +746,7 @@ export function CollectionWorkspace(props: CollectionWorkspaceProps) {
   );
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-3xl">
       {collectionsState.kind === "loading" ? (
         <p className={dashboardMutedTextClassName} role="status">
           Loading workspace…
@@ -753,265 +754,31 @@ export function CollectionWorkspace(props: CollectionWorkspaceProps) {
       ) : null}
 
       {!collectionsReady && collectionsState.kind !== "loading" ? (
-        <p className={dashboardMutedTextClassName} role="status">
-          Create or select a collection in the sidebar to use Ask AI, semantic
-          search, and documents.
-        </p>
+        <div
+          className={`${dashboardPanelClassName} px-4 py-8 text-center sm:px-6`}
+          role="status"
+        >
+          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+            No collection selected
+          </p>
+          <p className={`mt-2 ${dashboardMutedTextClassName} text-sm`}>
+            Create or choose a collection to use Ask AI, search, and documents.
+          </p>
+        </div>
       ) : null}
 
       {collectionsReady ? (
         <>
           <div
             className={
-              activeTab === "documents"
-                ? "space-y-4"
-                : "hidden"
-            }
-            aria-hidden={activeTab !== "documents"}
-          >
-          <form className="space-y-4" onSubmit={handleUpload}>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={fileFieldId} className={dashboardLabelClassName}>
-                Upload file
-              </label>
-              <input
-                id={fileFieldId}
-                name="file"
-                type="file"
-                accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
-                disabled={isUploading}
-                key={fileInputKey}
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  setSelectedFile(file);
-                  setUploadError(null);
-                  setUploadSuccess(null);
-                  if (file) {
-                    const clientError = validateDocumentFile(file);
-                    if (clientError) {
-                      setUploadError(clientError);
-                    }
-                  }
-                }}
-                className={`${dashboardFieldClassName} file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900 dark:file:bg-zinc-800 dark:file:text-zinc-50`}
-              />
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                PDF, TXT, or MD · maximum 10 MB
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={
-                isUploading ||
-                !selectedCollectionId ||
-                !selectedFile ||
-                documentsView.kind === "loading"
-              }
-              className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
-            >
-              {isUploading ? "Uploading…" : "Upload"}
-            </button>
-          </form>
-
-          {uploadError ? (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-              {uploadError}
-            </p>
-          ) : null}
-
-          {uploadSuccess ? (
-            <p
-              className="text-sm text-green-700 dark:text-green-400"
-              role="status"
-            >
-              {uploadSuccess}
-            </p>
-          ) : null}
-          </div>
-
-          <div
-            className={
-              activeTab === "search"
-                ? `space-y-4 ${dashboardPanelClassName} p-5 sm:p-6`
-                : "hidden"
-            }
-            aria-hidden={activeTab !== "search"}
-          >
-            <div>
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                Semantic search
-              </h2>
-              <p className={`mt-1 ${dashboardMutedTextClassName} text-xs`}>
-                Indexed (Ready) documents in the active collection only.
-                Cosine distance ranks retrieval similarity (lower is closer) —
-                not answer confidence.
-              </p>
-            </div>
-            <form
-              className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runCollectionSearch();
-              }}
-            >
-              <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
-                <label
-                  htmlFor={searchQueryFieldId}
-                  className={dashboardLabelClassName}
-                >
-                  Query
-                </label>
-                <input
-                  id={searchQueryFieldId}
-                  name="searchQuery"
-                  type="text"
-                  value={searchQuery}
-                  disabled={searchState.kind === "loading"}
-                  onChange={(event) => {
-                    if (
-                      searchCoordinatorRef.current.inFlight ||
-                      searchState.kind === "loading"
-                    ) {
-                      invalidatePendingSearch();
-                      setSearchState({ kind: "idle" });
-                      setSubmittedSearchQuery("");
-                    }
-                    setSearchQuery(event.target.value);
-                  }}
-                  className={dashboardFieldClassName}
-                  autoComplete="off"
-                />
-              </div>
-              <div className="flex w-full flex-col gap-1.5 sm:w-auto">
-                <label htmlFor={searchTopKFieldId} className={dashboardLabelClassName}>
-                  Results
-                </label>
-                <select
-                  id={searchTopKFieldId}
-                  name="searchTopK"
-                  value={searchTopK}
-                  disabled={searchState.kind === "loading"}
-                  onChange={(event) => {
-                    setSearchTopK(Number(event.target.value) as 3 | 5 | 10);
-                  }}
-                  className={dashboardFieldClassName}
-                >
-                  {SEARCH_TOP_K_OPTIONS.map((value) => (
-                    <option key={value} value={value}>
-                      Top {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                type="submit"
-                disabled={shouldDisableSearchSubmit({
-                  collectionSelected: Boolean(selectedCollectionId),
-                  queryValid: validateSearchQueryInput(searchQuery) === null,
-                  inFlight: searchState.kind === "loading",
-                })}
-                className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
-                aria-busy={searchState.kind === "loading"}
-              >
-                {searchState.kind === "loading" ? "Searching…" : "Search"}
-              </button>
-            </form>
-
-            {searchState.kind === "loading" &&
-            searchState.collectionId === selectedCollectionId &&
-            showSearchFeedback ? (
-              <p
-                className="text-sm text-zinc-600 dark:text-zinc-400"
-                role="status"
-              >
-                Searching indexed chunks…
-              </p>
-            ) : null}
-
-            {searchState.kind === "error" &&
-            searchState.collectionId === selectedCollectionId &&
-            showSearchFeedback ? (
-              <div className="space-y-2">
-                <p
-                  className="text-sm text-red-600 dark:text-red-400"
-                  role="alert"
-                >
-                  {searchState.message}
-                </p>
-                <button
-                  type="button"
-                  className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
-                  onClick={() => {
-                    void runCollectionSearch();
-                  }}
-                >
-                  Retry search
-                </button>
-              </div>
-            ) : null}
-
-            {searchState.kind === "empty" &&
-            searchState.collectionId === selectedCollectionId &&
-            showSearchFeedback ? (
-              <p
-                className="text-sm text-zinc-600 dark:text-zinc-400"
-                role="status"
-              >
-                No matching indexed passages for &quot;{searchState.query}&quot;.
-              </p>
-            ) : null}
-
-            {searchState.kind === "ready" &&
-            searchState.collectionId === selectedCollectionId &&
-            showSearchFeedback ? (
-              <ol className="space-y-3">
-                {searchState.matches.map((match, index) => (
-                  <li
-                    key={`${match.document_id}-${match.chunk_index}-${index}`}
-                    className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
-                  >
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                      {match.original_filename}
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
-                      {match.text}
-                    </p>
-                    <dl className="mt-2 grid gap-1 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-2">
-                      <div>
-                        <dt className="inline font-medium">Chunk: </dt>
-                        <dd className="inline">{match.chunk_index}</dd>
-                      </div>
-                      <div>
-                        <dt className="inline font-medium">Pages: </dt>
-                        <dd className="inline">
-                          {formatSearchPageNumbers(match.page_numbers)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="inline font-medium">Source: </dt>
-                        <dd className="inline">{match.source_kind}</dd>
-                      </div>
-                      <div>
-                        <dt className="inline font-medium">Distance: </dt>
-                        <dd className="inline">
-                          {formatCosineDistance(match.cosine_distance)}
-                        </dd>
-                      </div>
-                    </dl>
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-          </div>
-
-          <div
-            className={
               activeTab === "ask"
-                ? `space-y-5 ${dashboardPanelClassName} p-5 sm:p-6`
+                ? `space-y-4 ${dashboardPanelClassName} p-4 sm:p-5`
                 : "hidden"
             }
-            aria-hidden={activeTab !== "ask"}
+            role="tabpanel"
+            id={`${tabListId}-panel-ask`}
+            aria-labelledby={`${tabListId}-tab-ask`}
+            hidden={activeTab !== "ask"}
           >
             <div>
               <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
@@ -1191,15 +958,254 @@ export function CollectionWorkspace(props: CollectionWorkspaceProps) {
               </div>
             ) : null}
           </div>
+          <div
+            className={
+              activeTab === "search"
+                ? `space-y-4 ${dashboardPanelClassName} p-4 sm:p-5`
+                : "hidden"
+            }
+            role="tabpanel"
+            id={`${tabListId}-panel-search`}
+            aria-labelledby={`${tabListId}-tab-search`}
+            hidden={activeTab !== "search"}
+          >
+            <div>
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                Semantic search
+              </h2>
+              <p className={`mt-1 ${dashboardMutedTextClassName} text-xs`}>
+                Indexed (Ready) documents in the active collection only.
+                Cosine distance ranks retrieval similarity (lower is closer) —
+                not answer confidence.
+              </p>
+            </div>
+            <form
+              className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runCollectionSearch();
+              }}
+            >
+              <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
+                <label
+                  htmlFor={searchQueryFieldId}
+                  className={dashboardLabelClassName}
+                >
+                  Query
+                </label>
+                <input
+                  id={searchQueryFieldId}
+                  name="searchQuery"
+                  type="text"
+                  value={searchQuery}
+                  disabled={searchState.kind === "loading"}
+                  onChange={(event) => {
+                    if (
+                      searchCoordinatorRef.current.inFlight ||
+                      searchState.kind === "loading"
+                    ) {
+                      invalidatePendingSearch();
+                      setSearchState({ kind: "idle" });
+                      setSubmittedSearchQuery("");
+                    }
+                    setSearchQuery(event.target.value);
+                  }}
+                  className={dashboardFieldClassName}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+                <label htmlFor={searchTopKFieldId} className={dashboardLabelClassName}>
+                  Results
+                </label>
+                <select
+                  id={searchTopKFieldId}
+                  name="searchTopK"
+                  value={searchTopK}
+                  disabled={searchState.kind === "loading"}
+                  onChange={(event) => {
+                    setSearchTopK(Number(event.target.value) as 3 | 5 | 10);
+                  }}
+                  className={dashboardFieldClassName}
+                >
+                  {SEARCH_TOP_K_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      Top {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={shouldDisableSearchSubmit({
+                  collectionSelected: Boolean(selectedCollectionId),
+                  queryValid: validateSearchQueryInput(searchQuery) === null,
+                  inFlight: searchState.kind === "loading",
+                })}
+                className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
+                aria-busy={searchState.kind === "loading"}
+              >
+                {searchState.kind === "loading" ? "Searching…" : "Search"}
+              </button>
+            </form>
+
+            {searchState.kind === "loading" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <p
+                className="text-sm text-zinc-600 dark:text-zinc-400"
+                role="status"
+              >
+                Searching indexed chunks…
+              </p>
+            ) : null}
+
+            {searchState.kind === "error" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <div className="space-y-2">
+                <p
+                  className="text-sm text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {searchState.message}
+                </p>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
+                  onClick={() => {
+                    void runCollectionSearch();
+                  }}
+                >
+                  Retry search
+                </button>
+              </div>
+            ) : null}
+
+            {searchState.kind === "empty" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <p
+                className="text-sm text-zinc-600 dark:text-zinc-400"
+                role="status"
+              >
+                No matching indexed passages for &quot;{searchState.query}&quot;.
+              </p>
+            ) : null}
+
+            {searchState.kind === "ready" &&
+            searchState.collectionId === selectedCollectionId &&
+            showSearchFeedback ? (
+              <ol className="space-y-3">
+                {searchState.matches.map((match, index) => (
+                  <li
+                    key={`${match.document_id}-${match.chunk_index}-${index}`}
+                    className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                  >
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                      {match.original_filename}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                      {match.text}
+                    </p>
+                    <dl className="mt-2 grid gap-1 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-2">
+                      <div>
+                        <dt className="inline font-medium">Chunk: </dt>
+                        <dd className="inline">{match.chunk_index}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Pages: </dt>
+                        <dd className="inline">
+                          {formatSearchPageNumbers(match.page_numbers)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Source: </dt>
+                        <dd className="inline">{match.source_kind}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-medium">Distance: </dt>
+                        <dd className="inline">
+                          {formatCosineDistance(match.cosine_distance)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </div>
 
           <div
             className={
               activeTab === "documents"
-                ? `space-y-4 ${dashboardPanelClassName} p-5 sm:p-6`
+                ? `space-y-5 ${dashboardPanelClassName} p-4 sm:p-5`
                 : "hidden"
             }
-            aria-hidden={activeTab !== "documents"}
+            role="tabpanel"
+            id={`${tabListId}-panel-documents`}
+            aria-labelledby={`${tabListId}-tab-documents`}
+            hidden={activeTab !== "documents"}
           >
+          <form className="space-y-4" onSubmit={handleUpload}>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={fileFieldId} className={dashboardLabelClassName}>
+                Upload file
+              </label>
+              <input
+                id={fileFieldId}
+                name="file"
+                type="file"
+                accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+                disabled={isUploading}
+                key={fileInputKey}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setSelectedFile(file);
+                  setUploadError(null);
+                  setUploadSuccess(null);
+                  if (file) {
+                    const clientError = validateDocumentFile(file);
+                    if (clientError) {
+                      setUploadError(clientError);
+                    }
+                  }
+                }}
+                className={`${dashboardFieldClassName} file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900 dark:file:bg-zinc-800 dark:file:text-zinc-50`}
+              />
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                PDF, TXT, or MD · maximum 10 MB
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={
+                isUploading ||
+                !selectedCollectionId ||
+                !selectedFile ||
+                documentsView.kind === "loading"
+              }
+              className={`${dashboardPrimaryButtonClassName} w-full sm:w-auto`}
+            >
+              {isUploading ? "Uploading…" : "Upload"}
+            </button>
+          </form>
+
+          {uploadError ? (
+            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+              {uploadError}
+            </p>
+          ) : null}
+
+          {uploadSuccess ? (
+            <p
+              className="text-sm text-green-700 dark:text-green-400"
+              role="status"
+            >
+              {uploadSuccess}
+            </p>
+          ) : null}
             <div>
               <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
                 Documents
