@@ -9,6 +9,10 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.config import get_settings
+from ai_knowledge_hub_api.documents.deletion import (
+    DocumentDeletionConflictError,
+    delete_owned_document,
+)
 from ai_knowledge_hub_api.models import Document, DocumentChunk, DocumentStatus
 from ai_knowledge_hub_api.storage.dependencies import document_storage_for_settings
 from tests.auth_keys import Ed25519KeyPair
@@ -264,3 +268,77 @@ async def test_delete_returns_503_when_database_commit_fails(
 
     storage = document_storage_for_settings(get_settings())
     assert storage.read(storage_key) == b"data"
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_delete_rejects_indexing_document(
+    auth_env: None,
+    key_pair: Ed25519KeyPair,
+    migrated_documents_database: str,
+) -> None:
+    del migrated_documents_database
+    engine = create_engine(get_settings().resolved_database_url)
+
+    async with _client_for_subject(key_pair, "owner-a") as client:
+        collection_id = await _create_collection(client)
+        upload = await client.post(
+            f"/collections/{collection_id}/documents",
+            files={"file": ("indexing.txt", b"x", "text/plain")},
+        )
+        document_id = upload.json()["id"]
+
+    with Session(engine) as session:
+        document = session.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.status = DocumentStatus.INDEXING
+        session.commit()
+
+    async with _client_for_subject(key_pair, "owner-a") as client:
+        response = await client.delete(
+            f"/collections/{collection_id}/documents/{document_id}",
+        )
+        assert response.status_code == 409
+
+
+@pytest.mark.integration
+def test_atomic_delete_rejects_stale_uploaded_view_when_processing(
+    migrated_documents_database: str,
+) -> None:
+    """Regression: in-memory UPLOADED must not delete a row already PROCESSING."""
+    del migrated_documents_database
+    settings = get_settings()
+    engine = create_engine(settings.resolved_database_url)
+    storage = document_storage_for_settings(settings)
+
+    with Session(engine) as session:
+        from ai_knowledge_hub_api.models import Collection
+
+        collection = Collection(owner_subject="owner|race", name="Race")
+        session.add(collection)
+        session.flush()
+        document = Document(
+            collection_id=collection.id,
+            original_filename="race.txt",
+            mime_type="text/plain",
+            size_bytes=1,
+            storage_key=f"documents/{collection.id}/{uuid.uuid4()}",
+            status=DocumentStatus.PROCESSING,
+        )
+        session.add(document)
+        session.commit()
+        document_id = document.id
+
+    with Session(engine) as session:
+        assert session.get(Document, document_id) is not None
+        assert session.get(Document, document_id).status == DocumentStatus.PROCESSING
+
+    stale_view = Document(id=document_id)
+    stale_view.status = DocumentStatus.UPLOADED
+
+    with Session(engine) as session:
+        with pytest.raises(DocumentDeletionConflictError):
+            delete_owned_document(session, document=stale_view, storage=storage)
+
+    with Session(engine) as session:
+        assert session.get(Document, document_id) is not None

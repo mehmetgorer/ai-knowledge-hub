@@ -1,7 +1,9 @@
 """Delete owned documents (database, chunks, local storage)."""
 
 import logging
+import uuid
 
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ai_knowledge_hub_api.models import Document, DocumentStatus
@@ -31,13 +33,38 @@ def delete_owned_document(
     document: Document,
     storage: LocalDocumentStorage,
 ) -> None:
-    if document.status in _BLOCK_DELETE_STATUSES:
+    """
+    Delete the document row atomically (status guard in SQL), then remove storage.
+
+    Uses a conditional DELETE so a stale ORM instance cannot remove a row that
+    moved to PROCESSING/INDEXING after the HTTP handler loaded the document.
+    """
+    document_id: uuid.UUID = document.id
+    result = db.execute(
+        delete(Document)
+        .where(
+            Document.id == document_id,
+            Document.status.not_in(_BLOCK_DELETE_STATUSES),
+        )
+        .returning(Document.storage_key)
+    )
+    row = result.first()
+    if row is None:
+        db.rollback()
+        current_status = db.scalar(
+            select(Document.status).where(Document.id == document_id)
+        )
+        if current_status is None:
+            return
+        if current_status in _BLOCK_DELETE_STATUSES:
+            raise DocumentDeletionConflictError(
+                "Document cannot be deleted while processing or indexing",
+            )
         raise DocumentDeletionConflictError(
-            "Document cannot be deleted while processing or indexing",
+            "Document cannot be deleted in its current lifecycle state",
         )
 
-    storage_key = document.storage_key
-    db.delete(document)
+    storage_key = row[0]
     try:
         db.commit()
     except Exception:

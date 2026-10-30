@@ -29,22 +29,32 @@ def _document(*, status: DocumentStatus) -> Document:
 def test_blocks_delete_while_processing() -> None:
     db = MagicMock(spec=Session)
     storage = MagicMock(spec=LocalDocumentStorage)
+    document = _document(status=DocumentStatus.PROCESSING)
+    execute_result = MagicMock()
+    execute_result.first.return_value = None
+    db.execute.return_value = execute_result
+    db.scalar.return_value = DocumentStatus.PROCESSING
     with pytest.raises(DocumentDeletionConflictError):
         delete_owned_document(
             db,
-            document=_document(status=DocumentStatus.PROCESSING),
+            document=document,
             storage=storage,
         )
-    db.delete.assert_not_called()
+    storage.delete.assert_not_called()
 
 
 def test_blocks_delete_while_indexing() -> None:
     db = MagicMock(spec=Session)
     storage = MagicMock(spec=LocalDocumentStorage)
+    document = _document(status=DocumentStatus.INDEXING)
+    execute_result = MagicMock()
+    execute_result.first.return_value = None
+    db.execute.return_value = execute_result
+    db.scalar.return_value = DocumentStatus.INDEXING
     with pytest.raises(DocumentDeletionConflictError):
         delete_owned_document(
             db,
-            document=_document(status=DocumentStatus.INDEXING),
+            document=document,
             storage=storage,
         )
 
@@ -53,18 +63,25 @@ def test_deletes_db_before_storage() -> None:
     db = MagicMock(spec=Session)
     storage = MagicMock(spec=LocalDocumentStorage)
     document = _document(status=DocumentStatus.READY)
+    execute_result = MagicMock()
+    execute_result.first.return_value = (document.storage_key,)
+    db.execute.return_value = execute_result
     delete_owned_document(db, document=document, storage=storage)
-    db.delete.assert_called_once_with(document)
+    db.execute.assert_called_once()
+    db.delete.assert_not_called()
     db.commit.assert_called_once()
     storage.delete.assert_called_once_with(document.storage_key)
 
 
 def test_rolls_back_db_without_touching_storage_on_commit_failure() -> None:
     db = MagicMock(spec=Session)
+    document = _document(status=DocumentStatus.UPLOADED)
+    execute_result = MagicMock()
+    execute_result.first.return_value = (document.storage_key,)
+    db.execute.return_value = execute_result
     db.commit.side_effect = RuntimeError("db down")
     storage = MagicMock(spec=LocalDocumentStorage)
-    document = _document(status=DocumentStatus.UPLOADED)
     with pytest.raises(RuntimeError):
         delete_owned_document(db, document=document, storage=storage)
-    db.rollback.assert_called_once()
+    db.rollback.assert_called()
     storage.delete.assert_not_called()

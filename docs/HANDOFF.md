@@ -447,6 +447,15 @@ POST /collections/{collection_id}/ask
 - **Mobile card:** Filename (`break-words`), status badge, file size, upload date, full-width Process / Index / Delete with existing guards and feedback messages.
 - **Manual:** Verify Documents tab at **375px**, **768px**, and **1440px** in browser DevTools (not automated in CI).
 
+## Phase 5D — Reliability, security & quality audit (complete)
+
+- **P1 fix:** Atomic conditional `DELETE` in `documents/deletion.py` so delete cannot remove rows in **PROCESSING/INDEXING** when the handler holds a stale ORM instance (regression integration test).
+- **Security regressions:** `tests/test_security_isolation_integration.py` (cross-user list, wrong-collection document IDs).
+- **Retrieval eval:** `tests/test_rag_retrieval_eval.py` — synthetic Recall@3/5 and MRR = 1.0 on basis-vector fixture (mocked query embed); not a real-LLM benchmark.
+- **CI:** New GitHub Actions job **Backend integration (PostgreSQL)** — `pytest -m integration` against ephemeral `alembic_test_*` databases (pgvector service on port 5433).
+- **Docs:** `docs/QUALITY_AUDIT.md` — full findings register, test counts, portfolio vs production gaps.
+- **Local verification (2026-03-30):** backend unit **180** passed; integration **95** passed; frontend **41** passed; build OK.
+
 ## Recommended next steps
 
 1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.
