@@ -456,6 +456,11 @@ POST /collections/{collection_id}/ask
 - **Docs:** `docs/QUALITY_AUDIT.md` — full findings register, test counts, portfolio vs production gaps.
 - **Local verification (2026-03-30):** backend unit **180** passed; integration **95** passed; frontend **41** passed; build OK.
 
+## Phase 6A — GitHub README and screenshots (in progress)
+
+- **README:** Root `README.md` rewritten for portfolio readers (plain-language intro, RAG flow, accurate CI with three jobs, local setup, limitations). Stale claims removed (Postgres used for full app data; integration CI on GitHub).
+- **Screenshots:** Target paths under `docs/screenshots/` (`ask-ai.png`, `semantic-search.png`, `documents.png`, `mobile-ask.png`, `mobile-documents.png`). Checklist in `docs/screenshots/README.md`. Automated capture not run in agent (no Playwright / authenticated browser in environment); PNGs to be added manually before gallery embeds on GitHub.
+
 ## Recommended next steps
 
 1. Optional manual re-test of Qwen3 after prompt/`evidence_sufficient` changes.
