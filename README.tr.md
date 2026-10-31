@@ -20,10 +20,29 @@ Aşağıdaki ekran görüntüleri, sentetik değerlendirme dosyası **`rag-test.
 
 ## Ekran görüntüleri (demo verisi)
 
-| | |
-| --- | --- |
-| ![Genişletilmiş PDF kaynağı: sayfa bilgisi ve alıntı metni](docs/screenshots/ask-ai-source-evidence.png)<br>*Kaynak **[S1]** açık: parça metni, sayfalar, kosinüs mesafesi.* | ![Belge desteklemeyen soruda güvenli çekimserlik](docs/screenshots/ask-ai-abstention.png)<br>*Doğrulanmış parça yok — uydurma cevap yok.* |
-| ![Documents sekmesinde indekslenmiş rag-test.pdf](docs/screenshots/documents-indexed-pdf.png)<br>*Yükle → işle → indeksle → **Ready**.* | ![PDF sayfa 3’ten sayısal bilgi ve atıf](docs/screenshots/ask-ai-numeric-fact.png)<br>*Tek bilgi tipi; çok parçalı sorular tutarlı yanıtlanmayabilir.* |
+### Kaynak kanıtı
+
+![Genişletilmiş PDF kaynağı: sayfa bilgisi ve alıntı metni](docs/screenshots/ask-ai-source-evidence.png)
+
+*Kaynak **[S1]** açık: parça metni, sayfalar, kosinüs mesafesi.*
+
+### Güvenli çekimserlik
+
+![Belge desteklemeyen soruda güvenli çekimserlik](docs/screenshots/ask-ai-abstention.png)
+
+*Doğrulanmış parça yok — uydurma cevap yok.*
+
+### Arama için hazır belge
+
+![Documents sekmesinde indekslenmiş rag-test.pdf](docs/screenshots/documents-indexed-pdf.png)
+
+*Yükle → işle → indeksle → **Ready**.*
+
+### Sayısal bilgi ve atıf
+
+![PDF sayfa 3’ten sayısal bilgi ve atıf](docs/screenshots/ask-ai-numeric-fact.png)
+
+*Tek bilgi tipi; çok parçalı sorular tutarlı yanıtlanmayabilir.*
 
 ## Belgeler yanıta nasıl dönüşür?
 
@@ -70,8 +89,14 @@ apps/web ──JWT/REST──► services/api ◄──► PostgreSQL (pgvector)
 Ayrıntı: [`docs/QUALITY_AUDIT.md`](docs/QUALITY_AUDIT.md)
 
 ```powershell
-npm run lint && npm run typecheck && npm run test --workspace=web && npm run build
-cd services/api && uv run ruff check . && uv run pytest && uv run pytest -m integration
+npm run lint
+npm run typecheck
+npm run test --workspace=web
+npm run build
+cd services\api
+uv run ruff check .
+uv run pytest
+uv run pytest -m integration
 ```
 
 ## Yerel kurulum

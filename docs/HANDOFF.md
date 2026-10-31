@@ -454,7 +454,7 @@ POST /collections/{collection_id}/ask
 - **Retrieval eval:** `tests/test_rag_retrieval_eval.py` — synthetic Recall@3/5 and MRR = 1.0 on basis-vector fixture (mocked query embed); not a real-LLM benchmark.
 - **CI:** New GitHub Actions job **Backend integration (PostgreSQL)** — `pytest -m integration` against ephemeral `alembic_test_*` databases (pgvector service on port 5433).
 - **Docs:** `docs/QUALITY_AUDIT.md` — full findings register, test counts, portfolio vs production gaps.
-- **Local verification (2026-03-30):** backend unit **180** passed; integration **95** passed; frontend **41** passed; build OK.
+- **Local verification (2026-10-30):** backend unit **180** passed; integration **95** passed; frontend **41** passed; build OK.
 
 ## Phase 6A — GitHub README and screenshots (complete)
 

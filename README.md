@@ -22,10 +22,29 @@ Screenshots below use the synthetic evaluation PDF **`rag-test.pdf`** (fictional
 
 ## Screenshots (demonstration data)
 
-| | |
-| --- | --- |
-| ![Expanded PDF source passage with page metadata and retrieval rank](docs/screenshots/ask-ai-source-evidence.png)<br>*Source **[S1]** expanded: chunk text, pages, cosine distance.* | ![Safe abstention when the document does not support the question](docs/screenshots/ask-ai-abstention.png)<br>*No verified passages — the app refuses to invent an answer.* |
-| ![Indexed rag-test.pdf in the Documents tab](docs/screenshots/documents-indexed-pdf.png)<br>*Upload → process → index → **Ready**.* | ![Grounded numeric fact with citation to PDF page 3](docs/screenshots/ask-ai-numeric-fact.png)<br>*Single-fact retrieval; multi-part questions are not consistently handled.* |
+### Source evidence
+
+![Expanded PDF source passage with page metadata and retrieval rank](docs/screenshots/ask-ai-source-evidence.png)
+
+*Source **[S1]** expanded: chunk text, pages, cosine distance.*
+
+### Safe abstention
+
+![Safe abstention when the document does not support the question](docs/screenshots/ask-ai-abstention.png)
+
+*No verified passages — the app refuses to invent an answer.*
+
+### Document ready for search
+
+![Indexed rag-test.pdf in the Documents tab](docs/screenshots/documents-indexed-pdf.png)
+
+*Upload → process → index → **Ready**.*
+
+### Grounded numeric fact
+
+![Grounded numeric fact with citation to PDF page 3](docs/screenshots/ask-ai-numeric-fact.png)
+
+*Single-fact retrieval; multi-part questions are not consistently handled.*
 
 ## How documents become answers
 
@@ -72,8 +91,14 @@ On every push to `main`:
 Details: [`docs/QUALITY_AUDIT.md`](docs/QUALITY_AUDIT.md)
 
 ```powershell
-npm run lint && npm run typecheck && npm run test --workspace=web && npm run build
-cd services/api && uv run ruff check . && uv run pytest && uv run pytest -m integration
+npm run lint
+npm run typecheck
+npm run test --workspace=web
+npm run build
+cd services\api
+uv run ruff check .
+uv run pytest
+uv run pytest -m integration
 ```
 
 ## Local setup

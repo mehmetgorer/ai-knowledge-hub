@@ -10,8 +10,8 @@ OUT = REPO / "docs" / "screenshots"
 
 # Remove Chrome chrome (~top) and Windows taskbar + dev footer (~bottom).
 CHROME_TOP = 142
-FOOTER_BOTTOM = 96
-MAX_WIDTH = 1200
+FOOTER_BOTTOM = 88
+MAX_WIDTH = 1280
 
 
 def crop_app(src: str, dest: str, *, top: int = CHROME_TOP, bottom: int = FOOTER_BOTTOM) -> None:
@@ -30,7 +30,8 @@ def crop_app(src: str, dest: str, *, top: int = CHROME_TOP, bottom: int = FOOTER
 
 def main() -> None:
     crop_app("6.png", "ask-ai-grounded-answer.png")
-    crop_app("13.png", "ask-ai-source-evidence.png", bottom=110)
+    # Keep extra vertical space for expanded source passage text.
+    crop_app("13.png", "ask-ai-source-evidence.png", bottom=72)
     crop_app("9.png", "ask-ai-abstention.png")
     crop_app("3.png", "documents-indexed-pdf.png")
     crop_app("7.png", "ask-ai-numeric-fact.png")

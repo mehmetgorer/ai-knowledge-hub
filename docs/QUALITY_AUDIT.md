@@ -1,4 +1,4 @@
-# Quality Audit — Phase 5D (2026-03-30)
+# Quality Audit — Phase 5D (October 2026)
 
 Audit scope: **reliability, security, reproducibility** of the current RAG MVP. No feature redesign. Evidence from **source review**, **local test runs**, and **targeted regression tests** added in this phase.
 
@@ -76,7 +76,7 @@ Existing integration coverage (not re-run with new binaries in CI):
 
 ## Test infrastructure and CI
 
-### Local runs (2026-03-30, Windows, Docker Postgres)
+### Local runs (2026-10-30, Windows, Docker Postgres)
 
 | Suite | Command | Result |
 | ----- | ------- | ------ |
