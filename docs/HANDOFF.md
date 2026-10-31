@@ -463,8 +463,12 @@ POST /collections/{collection_id}/ask
 ## Phase 6B — Bilingual portfolio README (complete)
 
 - **`README.md`** (English) and **`README.tr.md`** (Turkish) with language links; shared structure and five cropped screenshots under `docs/screenshots/`.
-- **`docs/screenshots/_incoming/`** gitignored; finals from `_incoming/6,13,9,3,7.png` via `scripts/crop_portfolio_screenshots.py` (Chrome/taskbar removed, max width 1200px).
+- **`docs/screenshots/_incoming/`** gitignored; finals from `_incoming/6,13,9,3,7.png` via `scripts/crop_portfolio_screenshots.py` (Chrome/taskbar removed, max width 1280px).
 - Transparency: `rag-test.pdf` fictional demo data; no live demo URL; structural citation limits documented.
+
+## Documentation polish (post–6B)
+
+- Single-column README gallery; PowerShell 5.1–safe test commands; `QUALITY_AUDIT.md` audit date October 2026; source-evidence crop keeps more vertical content.
 
 ## Recommended next steps
 
